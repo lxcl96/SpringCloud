@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--指定指定实现接口 即：接口的全类名-->
+<mapper namespace="com.ly.springcloud.dao.PaymentDao">
+
+    <sql id="columns"> id,serial </sql>
+    <sql id="table"> payment </sql>
+
+    <!--
+        property:为Java实体类属性
+        column:为数据库字段
+     -->
+    <resultMap id="resultColumns" type="com.ly.springcloud.entities.Payment">
+        <id property="id" column="id" javaType="java.lang.Long" jdbcType="BIGINT" />
+        <id property="serial" column="serial" javaType="java.lang.String" jdbcType="VARCHAR" />
+    </resultMap>
+
+    <select id="getPaymentById" parameterType="long" resultMap="resultColumns">
+        select
+            <include refid="columns" />
+        from
+            <include refid="table" /> t
+        where
+            t.id=#{id}
+    </select>
+
+    <!--
+        配置文件开启了包别名（爆红不影响），
+        useGeneratedKeys 使用生产的主键
+
+        实体类和map一样直接#{}取就行了
+        -->
+    <insert id="create" parameterType="Payment" useGeneratedKeys="true" keyProperty="id">
+        insert into
+            <include refid="table" />(serial)
+        values
+            (#{serial})
+    </insert>
+
+</mapper>
