@@ -2,6 +2,7 @@ package com.ly.springcloud;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
 
 /**
  * FileName:OrderMain80.class
@@ -9,6 +10,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Date:2022/12/13 0013
  * Description: 消费者端
  */
+@EnableEurekaClient
 @SpringBootApplication
 public class OrderMain80 {
 

@@ -33,7 +33,6 @@ public class PaymentController {
         //map存放返回的信息
         Map<String,Object> map = new HashMap<>();
         map.put("serverPort",serverPort);
-
         int ret = paymentService.create(payment);
         if (ret > 0) {
            //插入成功
