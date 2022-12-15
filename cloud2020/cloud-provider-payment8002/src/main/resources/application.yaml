@@ -27,4 +27,13 @@ eureka:
     fetchRegistry: true
     service-url:
       defaultZone: http://eureka7001.com:7001/eureka/,http://eureka7002.com:7002/eureka/
-
+  # 显示的服务名，唯一id
+  instance:
+    instance-id: payment8002
+    prefer-ip-address: true
+    # 指示eureka客户端需要多长时间(以秒为单位)向eureka服务器发送一次心跳，以表明它仍处于活动状态。默认30秒
+    # 如果在leaseExpirationDurationInSeconds中指定的时间内没有接收到心跳，eureka服务器将从其视图中删除该实例，并禁止该实例的流量。
+    lease-renewal-interval-in-seconds: 1
+    # 指示eureka客户端需要多长时间(以秒为单位)向eureka服务器发送一次心跳，以表明它仍处于活动状态。默认90秒
+    # 如果在leaseExpirationDurationInSeconds中指定的时间内没有接收到心跳，eureka服务器将从其视图中删除该实例，并禁止该实例的流量。
+    lease-expiration-duration-in-seconds: 2

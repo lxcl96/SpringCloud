@@ -7,9 +7,12 @@ import com.ly.springcloud.service.PaymentService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,9 +27,37 @@ public class PaymentController {
 
     @Autowired
     private PaymentService paymentService;
+
     @Value("${server.port}")
     private String serverPort;
 
+    @Autowired
+    // 搭配eureka server
+    private DiscoveryClient discoveryClient;
+
+    @GetMapping("/payment/discovery")
+    public Object discovery() {
+        //获取eureka server上注册在线的所有服务信息如cloud-payment-service和cloud-order-service
+        List<String> services = discoveryClient.getServices();
+        for (String service : services) {
+            log.info("微服务名：{}",service);
+        }
+
+        //根据服务名，获取所有的微服务信息 如payment80001的所有信息
+        List<ServiceInstance> instances = discoveryClient.getInstances("cloud-payment-service");
+        instances.forEach(consumer -> {
+            log.info(
+                    "微服务：host={},instanceId={},metaData={},port={},serviceId={},uri={}",
+                    consumer.getHost(),
+                    consumer.getInstanceId(),
+                    consumer.getMetadata(),
+                    consumer.getPort(),
+                    consumer.getServiceId(),
+                    consumer.getUri()
+            );
+        });
+        return this.discoveryClient;
+    }
     // provider端必须是从@RequestBody 请求体获取参数，因为请求被封在请求体中，而不是直链
     @PostMapping(path = {"/payment/create"})
     public CommonResult create(@RequestBody Payment payment) {

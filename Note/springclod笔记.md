@@ -750,6 +750,8 @@ mvn install
 
 # 6. Eureka服务注册与发现
 
+Eureka官网：[Issues · Netflix/eureka · GitHub](https://github.com/Netflix/eureka/wiki)
+
 ## 6.1 Eureka基础知识
 
 ### 6.1.1 服务治理
@@ -1174,13 +1176,200 @@ public class ApplicationContextConfig {
 
 ## 6.4 actuator微服务信息完善
 
+### 6.4.1 eureka不显示服务的主机名
 
+```yaml
+eureka:
+# 显示的服务名，唯一id
+  instance:
+    instance-id: payment8001
+```
+
+<img src='img\image-20221215093854851.png'>
+
+### 6.4.2 访问服务有ip地址显示
+
+```yaml
+eureka:  
+  instance:
+    # 优先使用ip而不是主机名
+    prefer-ip-address: true
+```
+
+<img src='img\image-20221215094610474.png'>
 
 ## 6.5 服务发现Discovery
 
+对于注册进eureka里面的微服务，可以通过服务（consumer80可以）发现`@EnableDiscoveryClient`来获得该服务的信息。
 
+### 6.5.1 payment8001引入DiscoverClient
+
+```java
+@EnableDiscoveryClient //springcloud包
+@EnableEurekaClient
+@SpringBootApplication
+public class OrderMain80 {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderMain80.class, args);
+    }
+}
+```
+
+### 6.5.2  将微服务信息暴露出去
+
+```java
+@Slf4j
+@RestController
+public class PaymentController {
+
+    @Autowired
+    private PaymentService paymentService;
+
+    @Value("${server.port}")
+    private String serverPort;
+
+    @Autowired
+    // 搭配eureka server
+    private DiscoveryClient discoveryClient;
+
+    @GetMapping("/payment/discovery")
+    public Object discovery() {
+        //获取eureka server上注册在线的所有服务(application)信息
+        //如cloud-payment-service和cloud-order-service
+        List<String> services = discoveryClient.getServices();
+        for (String service : services) {
+            log.info("微服务名：{}",service);
+        }
+
+        //根据服务名（application），获取所有的微服务信息 如payment80001的所有信息
+        List<ServiceInstance> instances = discoveryClient.getInstances("cloud-payment-service");
+        instances.forEach(consumer -> {
+            log.info(
+                    "微服务：host={},instanceId={},metaData={},port={},serviceId={},uri={}",
+                    consumer.getHost(),
+                    consumer.getInstanceId(),
+                    consumer.getMetadata(),
+                    consumer.getPort(),
+                    consumer.getServiceId(),
+                    consumer.getUri()
+            );
+        });
+        return this.discoveryClient;
+    }
+    ...
+}
+```
+
+### 6.5.3 测试
+
+```sh
+# 日志
+微服务名：cloud-payment-service
+    
+微服务：host=192.168.77.1,instanceId=payment8002,metaData={management.port=8002},port=8002,serviceId=CLOUD-PAYMENT-SERVICE,uri=http://192.168.77.1:8002
+
+微服务：host=192.168.77.1,instanceId=payment8001,metaData={management.port=8001},port=8001,serviceId=CLOUD-PAYMENT-SERVICE,uri=http://192.168.77.1:8001
+```
+
+<img src='img\image-20221215101947331.png'>
 
 ## 6.6 Eureka自我保护
 
+### 6.6.1 概述
 
+保护模式主要用于一组客户端和Eureka Server之间存在网络分区场景下的保护。一旦进入保护模式，Eureka Server将会尝试保护其服务注册表中的信息，不再删除服务注册表中的数据，也就是不会注销任何微服务。
+
+一句话：**某时刻某一个微服务不可用了，Eureka不会立刻清理（页面上消失），依旧会对该服务的信息进行保存。**
+
+**属于微服务cloud中的CAP的AP分支**
+
+> CAP的解释：
+>
+> 1、一致性（Consistency）：（等同于所有节点访问同一份最新的数据副本）
+>
+> 2、可用性（Availability）：（每次请求都能获取到非错的响应——但是不保证获取的数据为最新数据）
+>
+> 3、分区容错性（Partition tolerance）：（以实际效果而言，分区相当于对通信的时限要求。系统如果不能在时限内达成数据一致性，就意味着发生了分区的情况，必须就当前操作在C和A之间做出选择，保证分布式网络中部分网络不可用时, 系统依然正常对外提供服务。
+
+如果在Eureka Server的首页看到以下这段提示，则说明Eureka进入了保护模式：
+
+> <font color='red'>EMERGENCY! EUREKA MAY BE INCORRECTLY CLAIMING INSTANCES ARE UP WHEN THEY'RE NOT. RENEWALS ARE LESSER THAN THRESHOLD AND HENCE THE INSTANCES ARE NOT BEING EXPIRED JUST TO BE SAFE.</font>
+>
+> 紧急!Eureka可能错误地声称实例已经启动，而实际上它们并没有启动。更新次数小于阈值，因此为了安全起见，实例没有过期。
+
+### 6.6.2 产生原因
+
+**为什么会产生Eureka自我保护机制？**
+	为了防止EurekaClient可以正常运行，但是 与 EurekaServer网络不通情况下，EurekaServer不会立刻将EurekaClient服务剔除
+
+**什么是自我保护模式？**
+	默认情况下，如果EurekaServer在一定时间内没有接收到某个微服务实例的心跳，EurekaServer将会注销该实例（默认90秒）。但是当网络分区故障发生(延时、卡顿、拥挤)时，微服务与EurekaServer之间无法正常通信，以上行为可能变得非常危险了——因为微服务本身其实是健康的，此时本不应该注销这个微服务。Eureka通过“自我保护模式”来解决这个问题——当EurekaServer节点在短时间内丢失过多客户端时（可能发生了网络分区故障），那么这个节点就会进入自我保护模式。
+
+<img src='img\image-20221215104840625.png'>
+
+**在自我保护模式中，Eureka Server会保护服务注册表中的信息，不再注销任何服务实例。**
+它的设计哲学就是宁可保留错误的服务注册信息，也不盲目注销任何可能健康的服务实例。一句话讲解：好死不如赖活着
+
+综上，自我保护模式是一种应对网络异常的安全保护措施。它的架构哲学是宁可同时保留所有微服务（健康的微服务和不健康的微服务都会保留）也不盲目注销任何健康的微服务。使用自我保护模式，可以让Eureka集群更加的健壮、稳定。
+
+###  6.6.3 禁用Eureka自我保护
+
+Eureka server 7001和 7002配置文件中关闭自我保护，更改心跳连接的时长。
+
+```yaml
+server:
+  port: 7001
+spring:
+  application:
+    name: cloud-eureka-server-7001
+    
+eureka:
+  instance:
+    hostname: eureka7001.com #eureka服务端的实例名称
+    # 指示eureka客户端需要多长时间(以秒为单位)向eureka服务器发送一次心跳，以表明它仍处于活动状态。默认30秒
+    # 如果在leaseExpirationDurationInSeconds中指定的时间内没有接收到心跳，eureka服务器将从其视图中删除该实例，并禁止该实例的流量。
+    lease-renewal-interval-in-seconds: 1
+    # 指示eureka客户端需要多长时间(以秒为单位)向eureka服务器发送一次心跳，以表明它仍处于活动状态。默认90秒
+    # 如果在leaseExpirationDurationInSeconds中指定的时间内没有接收到心跳，eureka服务器将从其视图中删除该实例，并禁止该实例的流量。
+    lease-expiration-duration-in-seconds: 2
+    
+  client: 
+    #false表示不向注册中心注册自己。
+    register-with-eureka: false
+    #false表示自己端就是注册中心，我的职责就是维护服务实例，并不需要去检索服务
+    fetch-registry: false
+    service-url:
+      #设置与Eureka Server交互的地址查询服务和注册服务都需要依赖这个地址。
+      #集群就是相互注册对方的url
+      defaultZone: http://eureka7002.com:7002/eureka/
+      
+  # 默认开启自我保护
+  server:
+    enable-self-preservation: false
+    # 设置 检测下线服务 驱逐时间间隔 默认是60s
+    eviction-interval-timer-in-ms: 2000
+```
+
+### 6.6.4 测试
+
+<img src='img\image-20221215131843805.png'>
+
+
+
+***
+
+# 7. Zookeeper服务注册与发现
+
+由于Eureka停止更新，SpringCloud整合Zookeeper代替Eureka。
+
+## 7.2 
+
+### 7.2.1 
+
+### 7.2.2 
+
+### 7.2.3 
+
+### 7.2.4 
 
