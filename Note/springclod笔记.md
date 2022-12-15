@@ -1363,13 +1363,472 @@ eureka:
 
 由于Eureka停止更新，SpringCloud整合Zookeeper代替Eureka。
 
-## 7.2 
+## 7.1 centos7安装zookeeper3.4.9
 
-### 7.2.1 
++ 创建并进入目录
 
-### 7.2.2 
+  ```sh
+  mkdir -p /usr/local/services/zookeeper
+  cd /usr/local/services/zookeeper
+  ```
 
-### 7.2.3 
++ 下载zookeeper3.4.9并解压
 
-### 7.2.4 
+  ```sh
+  wget http://archive.apache.org/dist/zookeeper/zookeeper-3.4.9/zookeeper-3.4.9.tar.gz
+  tar -zxvf zookeeper-3.4.9.tar.gz
+  ```
+
++ 进入加压后的zookeeper的conf文件夹，复制 zoo_sample.cfg 文件的并命名为为 zoo.cfg：
+
+  ```sh
+  cd zookeeper-3.4.9/conf/
+  cp zoo_sample.cfg zoo.cfg
+  ```
+
++ 用 vim 打开 zoo.cfg 文件并修改其内容为如下：
+
+  ```sh
+  	# The number of milliseconds of each tick
+   
+      # zookeeper 定义的基准时间间隔，单位：毫秒
+      tickTime=2000
+   
+      # The number of ticks that the initial
+      # synchronization phase can take
+      initLimit=10
+      # The number of ticks that can pass between
+      # sending a request and getting an acknowledgement
+      syncLimit=5
+      # the directory where the snapshot is stored.
+      # do not use /tmp for storage, /tmp here is just
+      # example sakes.
+      # dataDir=/tmp/zookeeper
+   
+      # 数据文件夹
+      dataDir=/usr/local/services/zookeeper/zookeeper-3.4.9/data
+   
+      # 日志文件夹
+      dataLogDir=/usr/local/services/zookeeper/zookeeper-3.4.9/logs
+   
+      # the port at which the clients will connect
+      # 客户端访问 zookeeper 的端口号
+      clientPort=2181
+  ```
+
++ 进入到 /usr/local/services/zookeeper/zookeeper-3.4.9/bin 目录中
+
+  ```sh
+   cd /usr/local/services/zookeeper/zookeeper-3.4.9/bin/
+  ```
+
++ 用 vim 打开 /etc/ profile， 并在其尾部追加如下内容：
+
+  ```sh
+   vim /etc/profile
+   # 并在其尾部追加如下内容：
+  ```
+
+  ```sh
+  # idea - zookeeper-3.4.9 config start - 2016-09-08
+  
+  export ZOOKEEPER_HOME=/usr/local/services/zookeeper/zookeeper-3.4.9/
+  export PATH=$ZOOKEEPER_HOME/bin:$PATH
+  export PATH
+  
+  # idea - zookeeper-3.4.9 config start - 2016-09-08
+  ```
+
++ 使 /etc/ 目录下的 profile 文件即可生效：
+
+  ```sh
+  source /etc/profile
+  ```
+
++ 启动 zookeeper 服务：
+
+  ```sh
+  zkServer.sh start
+  ```
+
+  > 如打印如下信息则表明启动成功：
+  >     ZooKeeper JMX enabled by default
+  >     Using config: /usr/local/services/zookeeper/zookeeper-3.4.9/bin/../conf/zoo.cfg
+  >     Starting zookeeper ... STARTED
+
++ 查询 zookeeper 状态
+
+  ```sh
+  zkServer.sh status
+  ```
+
+  > ZooKeeper JMX enabled by default
+  > Using config: /usr/local/services/zookeeper/zookeeper-3.4.9/bin/../conf/zoo.cfg
+  > Mode: standalone
+
++ 关闭 zookeeper 服务：
+
+  ```sh
+  zkServer.sh stop
+  ```
+
++ 重启 zookeeper 服务：
+
+  ```sh
+  zkServer.sh restart
+  ```
+
+## 7.2 zookeeper代替Eureka实现服务注册与发现
+
+<img src='img\image-20221215162553393.png'>
+
+### 7.2.1 注册中心zookeeper
+
++ zookeeper是一个分布式协调工具，可以实现注册中心功能
++ 关闭Linux服务器防火墙后启动zookeeper服务器
++ zookeeper服务器取代Eureka服务器，zk作为服务注册中心
+
+### 7.2.2  服务提供者 provider 8004
+
+#### 7.2.2.1 创建项目
+
+<img src='img\image-20221215152028005.png'>
+
+#### 7.2.2.2 修改pom
+
+```xml
+<dependencies>
+        <!-- SpringBoot整合Web组件 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency><!-- 引入自己定义的api通用包，可以使用Payment支付Entity -->
+            <groupId>com.ly.springcloud</groupId>
+            <artifactId>cloud-api-commons</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- SpringBoot整合zookeeper客户端 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+```
+
+#### 7.2.2.3 修改配置文件
+
+```yaml
+server:
+  port: 8004
+
+spring:
+  application:
+    name: cloud-provider-payment
+  # 连接zookeeper服务端
+  cloud:
+    zookeeper:
+      connect-string: 192.168.77.3:2181
+```
+
+#### 7.2.2.4 创建主启动类
+
+```java
+//该注解用于向使用consul或者zookeeper作为注册中心时注册服务
+@EnableDiscoveryClient//谁连接，谁提供用
+@SpringBootApplication
+public class PaymentMain8004 {
+    public static void main(String[] args) {
+        SpringApplication.run(PaymentMain8004.class,args);
+    }
+}
+```
+
+#### 7.2.2.5 controller
+
+```java
+// 一个简单的controller，用于展示服务是否成功注册进入zookeeper
+@Slf4j
+@RestController
+public class PaymentController {
+    @Value("${server.port}")
+    private Integer port;
+
+
+    @RequestMapping("/payment/zk")
+    public CommonResult paymentZK(){
+        return new CommonResult(
+                200,
+                "成功",
+                "serverPort:" + port
+        );
+    }
+}
+```
+
+#### 7.2.2.6 验证测试
+
++ 先启动zookeeper服务
+
+  ```sh
+  zkServer.sh start
+  ```
+
++ 再连上zookeeper客户端
+
+  ```sh
+  ./zkCli.sh
+  ```
+
+  ```sh
+  # 运行查看当前zookeeper信息，只有一个默认的quota节点
+  [zk: localhost:2181(CONNECTED) 6] ls / 
+  [zookeeper]
+  [zk: localhost:2181(CONNECTED) 7] get /zookeeper
+  
+  cZxid = 0x0
+  ctime = Wed Dec 31 16:00:00 PST 1969
+  mZxid = 0x0
+  mtime = Wed Dec 31 16:00:00 PST 1969
+  pZxid = 0x0
+  cversion = -1
+  dataVersion = 0
+  aclVersion = 0
+  ephemeralOwner = 0x0
+  dataLength = 0
+  numChildren = 1
+  [zk: localhost:2181(CONNECTED) 8] ls /zookeeper
+  [quota]
+  
+  ```
+
++ 运行微服务
+
+  报错了经过排查发现是**jar包冲突，服务器的zookeeper为3.4.9而引入的org.springframework.cloud:spring-cloud-starter-zookeeper-discovery:2.2.0.RELEASE为3.5.3.beta版**
+
+  <img src='img\image-20221215160234656.png'>
+
+  <img src='img\image-20221215155925793.png'>
+
+  ***解决方法，排除此依赖，重新引入依赖***
+
+  ```xml
+  <!-- SpringBoot整合zookeeper客户端 -->
+  <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
+      <!-- 排除内部的依赖zookeeper3.5.3-->
+      <exclusions>
+          <exclusion>
+              <groupId>org.apache.zookeeper</groupId>
+              <artifactId>zookeeper</artifactId>
+          </exclusion>
+      </exclusions>
+  </dependency>
+  <!-- 引入服务器版本zookeeper依赖3.4.9-->
+  <dependency>
+      <groupId>org.apache.zookeeper</groupId>
+      <artifactId>zookeeper</artifactId>
+      <version>3.4.9</version>
+  </dependency>
+  ```
+
+***再次运行测试，***
+
+```sh
+[zk: localhost:2181(CONNECTED) 18] ls /
+[services, zookeeper]
+[zk: localhost:2181(CONNECTED) 19] ls /services
+[cloud-provider-payment]
+[zk: localhost:2181(CONNECTED) 20] 
+```
+
+<img src='img\image-20221215161151016.png'>
+
+#### 7.2.2.7 验证测试2
+
+zookeeper中查看注册的服务信息：
+
++ `31efec0b-2427-4e79-80a1-1a5882010080`就为cloud-provider-payment服务下实例名id，
+
+```sh
+[zk: localhost:2181(CONNECTED) 21] ls /services
+[cloud-provider-payment]
+[zk: localhost:2181(CONNECTED) 22] ls /services/cloud-provider-payment
+[31efec0b-2427-4e79-80a1-1a5882010080]
+[zk: localhost:2181(CONNECTED) 23] ls /services/cloud-provider-payment/31efec0b-2427-4e79-80a1-1a5882010080
+[]
+[zk: localhost:2181(CONNECTED) 24] get /services/cloud-provider-payment/31efec0b-2427-4e79-80a1-1a5882010080
+{"name":"cloud-provider-payment","id":"31efec0b-2427-4e79-80a1-1a5882010080","address":"DESKTOP-O5VMOIK","port":8004,"sslPort":null,"payload":{"@class":"org.springframework.cloud.zookeeper.discovery.ZookeeperInstance","id":"application-1","name":"cloud-provider-payment","metadata":{}},"registrationTimeUTC":1671091740425,"serviceType":"DYNAMIC","uriSpec":{"parts":[{"value":"scheme","variable":true},{"value":"://","variable":false},{"value":"address","variable":true},{"value":":","variable":false},{"value":"port","variable":true}]}}
+cZxid = 0xa
+ctime = Thu Dec 15 00:09:02 PST 2022
+mZxid = 0xa
+mtime = Thu Dec 15 00:09:02 PST 2022
+pZxid = 0xa
+cversion = 0
+dataVersion = 0
+aclVersion = 0
+ephemeralOwner = 0x185149d73640002
+dataLength = 536
+numChildren = 0
+[zk: localhost:2181(CONNECTED) 25] 
+
+```
+
+#### 7.2.2.8 思考
+
+zookeeper中保存的服务是临时节点还是永久节点？
+
+```sh
+# 关闭微服务，过了一会发现服务被zookeeper删除了
+# 再重新启动后，又会把微服务注册进zookeeper中，但是id发送了变化
+```
+
+<img src='img\image-20221215162513671.png'>
+
+### 7.2.3 服务消费者consumerzk-80
+
+#### 7.2.3.1 创建项目
+
+<img src='img\image-20221215163108347.png'>
+
+#### 7.2.3.2 修改pom
+
+```xml
+<dependencies>
+    <!-- SpringBoot整合Web组件 -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency><!-- 引入自己定义的api通用包，可以使用Payment支付Entity -->
+        <groupId>com.ly.springcloud</groupId>
+        <artifactId>cloud-api-commons</artifactId>
+        <version>${project.version}</version>
+    </dependency>
+    <!-- SpringBoot整合zookeeper客户端 -->
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
+        <!-- 排除内部的依赖zookeeper3.5.3-->
+        <exclusions>
+            <exclusion>
+                <groupId>org.apache.zookeeper</groupId>
+                <artifactId>zookeeper</artifactId>
+            </exclusion>
+        </exclusions>
+    </dependency>
+    <!-- 引入服务器版本zookeeper依赖3.4.9-->
+    <dependency>
+        <groupId>org.apache.zookeeper</groupId>
+        <artifactId>zookeeper</artifactId>
+        <version>3.4.9</version>
+    </dependency>
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+```
+
+#### 7.2.3.3 修改配置文件
+
+```yaml
+server:
+  port: 80
+
+spring:
+  application:
+    name: cloud-consumer-order
+
+  cloud:
+    zookeeper:
+      connect-string: 192.168.77.3:2181
+```
+
+#### 7.2.3.4 创建主启动类
+
+```java
+@SpringBootApplication
+@EnableDiscoveryClient
+public class OrderZKMain80 {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderZKMain80.class,args);
+    }
+}
+```
+
+#### 7.2.3.5 配置类
+
+```java
+package com.ly.springcloud.config;
+...
+    
+@Configuration
+public class ApplicationContextConfig {
+
+    /**
+     * 使用@LoadBalanced注解的目的:
+     *  1.负载均衡
+     *  2.用zookeeper中服务名代替确定的ip:port 
+     * @return restTemplate
+     */
+    @Bean
+    @LoadBalanced
+    public RestTemplate restTemplate() {
+        return new RestTemplateBuilder().build();
+    }
+}
+```
+
+#### 7.2.3.6 controller
+
+```java
+@Slf4j
+@RestController
+public class OrderZkController {
+    @Autowired
+    private RestTemplate restTemplate;
+    //就是zookeeper中的服务名
+    private static final String url = "http://cloud-provider-payment";
+
+    @RequestMapping("/consumer/payment/{id}")
+    public CommonResult consume(@PathVariable("id") Integer id) {
+        log.info("接收到请求：id={}",id);
+        return restTemplate.getForObject(
+                //第一个记得加/
+            url + "/payment/zk",
+                CommonResult.class
+        );
+    }
+
+}
+```
+
+### 7.2.4 测试
+
+<img src='img\image-20221215165940801.png'>
+
+```sh
+[zk: localhost:2181(CONNECTED) 42] ls /services
+[cloud-provider-payment, cloud-consumer-order]
+[zk: localhost:2181(CONNECTED) 43] 
+```
 
