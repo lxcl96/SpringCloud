@@ -1832,3 +1832,21 @@ public class OrderZkController {
 [zk: localhost:2181(CONNECTED) 43] 
 ```
 
+## 7.3 应用集群模式
+
+新建一个provider项目`test-cloud-provider-payment8005`，设置相同的服务名`cloud-provider-payment`，设置不同的端口，经测试可以实现负载均衡和动态切换。
+
+```sh
+# zookeeper注册中心
+[zk: localhost:2181(CONNECTED) 49] ls /services
+[cloud-provider-payment, cloud-consumer-order]
+[zk: localhost:2181(CONNECTED) 50] ls /services/cloud-provider-payment
+[9e7fa101-9928-415f-b2d7-23e811abee87, b06ca75b-0265-4190-a5a5-97f1a1087143]
+[zk: localhost:2181(CONNECTED) 51] 
+```
+
+<img src='img\image-20221216091603707.png'>
+
+<img src='img\image-20221216091653069.png'>
+
+***一旦断开连接，zookeeper会立马将断开的服务从注册中心删除，比如8005断开连接就会立马删除，以后所有的请求都走8004了。***
