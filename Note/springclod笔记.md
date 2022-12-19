@@ -1834,6 +1834,8 @@ public class OrderZkController {
 
 ## 7.3 应用集群模式
 
+***项目：test-cloud-provider-payment8005***
+
 新建一个provider项目`test-cloud-provider-payment8005`，设置相同的服务名`cloud-provider-payment`，设置不同的端口，经测试可以实现负载均衡和动态切换。
 
 ```sh
@@ -1850,3 +1852,352 @@ public class OrderZkController {
 <img src='img\image-20221216091653069.png'>
 
 ***一旦断开连接，zookeeper会立马将断开的服务从注册中心删除，比如8005断开连接就会立马删除，以后所有的请求都走8004了。***
+
+# 8. Consul服务注册与发现
+
+## 8.1 Consul简介
+
+**官网：**https://www.consul.io/intro/index.html
+
+### 8.1.1 是什么
+
+Consul 是一套开源的分布式服务发现和配置管理系统，由 HashiCorp 公司用 Go 语言开发。
+
+提供了微服务系统中的服务治理、配置中心、控制总线等功能。这些功能中的每一个都可以根据需要单独使用，也可以一起使用以构建全方位的服务网格，总之Consul提供了一种完整的服务网格解决方案。
+
+它具有很多优点。包括： 基于 raft 协议，比较简洁； 支持健康检查, 同时支持 HTTP 和 DNS 协议 支持跨数据中心的 WAN 集群 提供图形界面 跨平台，支持 Linux、Mac、Windows。
+
+### 8.1.2 能干什么？
+
++ 服务发现，提供HTTP和DNS两种发现方式
+
++ 健康检测，支持多种方式、HTTP、TCP、Docker、Shell脚本定制化监控
+
++ KV键值对存储（内存）
+
+  > https://www.cnblogs.com/duanxz/p/9660766.html
+
++ 支持多数据中心
+
++ 提供可视化web界面
+
+<img src='img\image-20221219091715731.png'>
+
+### 8.1.3 下载
+
+**官网：**https://developer.hashicorp.com/consul/downloads
+
+### 8.1.4 第三方教程
+
+https://www.springcloud.cc/spring-cloud-consul.html
+
+> 翻译自springCloud consul官方文档，https://cloud.spring.io/spring-cloud-static/Hoxton.SR1/reference/htmlsingle/#spring-cloud-consul
+
+## 8.2 安装并运行Consul
+
+下载windows 1.6.1版本
+
+打开https://developer.hashicorp.com/consul/downloads，右上角选择版本1.6.1 点击下载，加压后只有一个consul.exe文件（不需要安装，直接运行）。
+
+**查看版本：**
+
+```sh
+consul --version
+```
+
+<img src='img\image-20221219093320319.png'>
+
+**服务启动：**
+
+```sh
+consul agent -dev
+```
+
+<img src='img\image-20221219093555276.png'>
+
+访问http://localhost:8500即可看到consul自带的web管理端
+
+<img src='img\image-20221219093623991.png'>
+
+## 8.3 服务提供者Provider
+
+### 8.3.1 新建项目8006
+
+<img src='img\image-20221219094502329.png'>
+
+### 8.3.2 改pom
+
+```xml
+<dependencies>
+        <!--SpringCloud consul-server -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-consul-discovery</artifactId>
+        </dependency>
+        <!-- SpringBoot整合Web组件 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+    	<dependency>
+            <groupId>com.ly.springcloud</groupId>
+            <artifactId>cloud-api-commons</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <!--日常通用jar包配置-->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+```
+
+### 8.3.3 修改配置文件
+
+```yaml
+server:
+  port: 8006
+
+spring:
+  application:
+    name: consul-provider-payment
+  #  将本地服务注册到consul中
+  cloud:
+    consul:
+      host: localhost
+      port: 8500
+      discovery:
+        service-name: ${spring.application.name}
+```
+
+### 8.3.4 创建主启动类
+
+```java
+@SpringBootApplication
+@EnableDiscoveryClient
+public class PaymentMain8006 {
+    public static void main(String[] args) {
+        SpringApplication.run(PaymentMain8006.class,args);
+    }
+}
+```
+
+### 8.3.5 创建controller
+
+```java
+@Slf4j
+@RestController
+public class PaymentController {
+    @Value("${server.port}")
+    private Integer port;
+
+
+    @RequestMapping("/payment/consul")
+    public CommonResult paymentZK(){
+        HashMap<String, Object> map = new HashMap<>();
+        map.put("serverPort",port);
+        map.put("serialNo", UUID.randomUUID().toString());
+        return new CommonResult(
+                200,
+                "成功",
+                map
+        );
+    }
+}
+```
+
+### 8.3.6 测试
+
+<img src='img\image-20221219100659399.png'>
+
+接口：http://localhost:8006/payment/consul 测试通过
+
+## 8.4 服务消费者Consumer
+
+### 8.4.1 创建项目
+
+<img src='img\image-20221219101023728.png'>
+
+### 8.4.2 修改pom
+
+```xml
+<dependencies>
+    <!--SpringCloud consul-server -->
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-consul-discovery</artifactId>
+    </dependency>
+    <!-- SpringBoot整合Web组件 -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <!--日常通用jar包配置-->
+    <dependency>
+        <groupId>com.ly.springcloud</groupId>
+        <artifactId>cloud-api-commons</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+```
+
+### 8.4.3 修改配置文件
+
+```yaml
+server:
+  port: 80
+
+spring:
+  application:
+    name: cloud-consumer-order
+  # 注册到consul中 ip host可以不写，默认就是本机
+  cloud:
+    consul:
+      discovery:
+        service-name: ${spring.application.name}
+```
+
+### 8.4.4 创建主启动类
+
+```java
+@EnableDiscoveryClient
+@SpringBootApplication
+public class OrderConsulMain80 {
+   public static void main(String[] args){
+     SpringApplication.run(OrderConsulMain80.class, args);
+   }
+}
+```
+
+### 8.4.5 创建配置类
+
+```java
+@Configuration
+public class ApplicationContextConfig {
+
+    /**
+     * 使用@LoadBalanced注解的目的:
+     *  1.负载均衡
+     *  2.用consul中服务名代替确定的ip:port
+     * @return restTemplate
+     */
+    @Bean
+    @LoadBalanced
+    public RestTemplate restTemplate() {
+        return new RestTemplateBuilder().build();
+    }
+}
+```
+
+### 8.4.6 创建controller
+
+```java
+@Slf4j
+@RestController
+public class OrderConsulController {
+    @Autowired
+    private RestTemplate restTemplate;
+    private static final String url = "http://consul-provider-payment";
+
+    @RequestMapping("/consumer/payment/{id}")
+    public CommonResult consume(@PathVariable("id") Integer id) {
+        log.info("接收到请求：id={}",id);
+        return restTemplate.getForObject(
+                //第一个记得加/
+            url + "/payment/consul",
+                CommonResult.class
+        );
+    }
+
+}
+```
+
+### 8.4.7 测试
+
+<img src='img\image-20221219102826409.png'>
+
+<img src='img\image-20221219103050830.png'>
+
+## 8.5 应用集群模式
+
+***项目：test-cloud-provider-payment8006***
+
+<img src='img\image-20221219104230246.png'>
+
+<img src='img\image-20221219104410613.png'>
+
+<img src='img\image-20221219104508558.png'>
+
+# 9 Eureka、Zookeeper和Consul的异同点
+
+<img src='img\image-20221219110114458.png'>
+
+## 9.1 CAP
+
+CAP理论关注粒度是数据，而不是整体系统设计的策略（不是AP就是CP）
+
+<img src='img\image-20221219132222930.png'>
+
++ Consistency（强一致性）
++ Availablity（可用性）
++ Parition tolerance（分区容错性）
+
+## 9.2 经典CAP图
+
+**AP架构（Eureka）**
+当网络分区出现后，为了保证可用性，系统B可以返回旧值，保证系统的可用性。
+结论：违背了一致性C的要求，只满足可用性和分区容错，即AP
+
+<img src='img\image-20221219132821126.png'>
+
+**CP架构（zookeeper/consul）**
+
+当网络分区出现后，为了保证一致性，就必须拒接请求，否则无法保证一致性
+结论：违背了可用性A的要求，只满足一致性和分区容错，即CP
+
+<img src='img\image-20221219132949640.png'>
+
+# 10 Ribbon负载均衡与服务调用
+
+## 10.1 概述
+
+## 10.2 Ribbon负载均衡演示
+
+## 10.3 Ribbon核心组件IRule
+
+## 10.4 Ribbon负载均衡算法
+
+# 11  OpenFeign服务接口调用
+
+
+
+# 12 Hystrix断路器
+
+
+
+# 13 zuul路由网关

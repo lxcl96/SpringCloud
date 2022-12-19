@@ -1,0 +1,11 @@
+server:
+  port: 80
+
+spring:
+  application:
+    name: cloud-consumer-order
+  # 注册到consul中 ip host可以不写，默认就是本机
+  cloud:
+    consul:
+      discovery:
+        service-name: ${spring.application.name}

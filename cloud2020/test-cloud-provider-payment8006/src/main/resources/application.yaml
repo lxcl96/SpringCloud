@@ -1,0 +1,12 @@
+server:
+  port: 18006
+
+spring:
+  application:
+    name: consul-provider-payment
+  #  将本地服务注册到consul中
+  cloud:
+    consul:
+      discovery:
+        service-name: ${spring.application.name}
+
