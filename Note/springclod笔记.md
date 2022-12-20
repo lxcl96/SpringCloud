@@ -2658,7 +2658,119 @@ public RoundRobinRule() {
 
 # 11  OpenFeign服务接口调用
 
+## 11.1概述
 
+​	**Spring Cloud官网地址：**https://cloud.spring.io/spring-cloud-static/Hoxton.SR1/reference/htmlsingle/#spring-cloud-openfeign
+
+​	**github官方地址：**https://github.com/spring-cloud/spring-cloud-openfeign
+
+​	Feign是一个声明式WebService客户端。使用Feign能**让编写Web Service客户端更加简单（即consumer端）**。
+​	它的使用方法是**定义一个服务接口（和provider提供的接口完全一样）然后在上面添加注解**。Feign也支持可拔插式的编码器和解码器。Spring Cloud对Feign进行了封装，使其支持了Spring MVC标准注解和HttpMessageConverters。Feign可以与Eureka和Ribbon组合使用以支持负载均衡
+
+<img src='img\image-20221220202230588.png'>
+
+### 11.1.1 Feign能干什么
+
+Feign旨在使编写Java Http客户端变得更容易。
+前面在使用Ribbon+RestTemplate时，利用RestTemplate对http请求的封装处理，形成了一套模版化的调用方法。但是在实际开发中，由于对服务依赖的调用可能不止一处，**往往一个接口会被多处调用，所以通常都会针对每个微服务自行封装一些客户端类来包装这些依赖服务的调用**。所以，Feign在此基础上做了进一步封装，由他来帮助我们定义和实现依赖服务接口的定义。在Feign的实现下，**我们只需创建一个接口并使用注解的方式来配置它(比如Dao接口上面标注Mapper注解,现在是一个微服务接口上面标注一个Feign注解即可)，即可完成对服务提供方的接口绑定**，简化了使用Spring cloud Ribbon时，自动封装服务调用客户端的开发量。
+
+**Feign集成了Ribbon**，利用Ribbon维护了Payment的服务列表信息，并且通过轮询实现了客户端的负载均衡。而与Ribbon不同的是，通过feign只需要定义服务绑定接口且以声明式的方法，优雅而简单的实现了服务调用
+
+<img src='img\image-20221220204246691.png'>
+
+### 11.1.2 OpenFeign和Feign的区别
+
+<img src='img\image-20221220203140148.png'>
+
+## 11.2 OpenFeign使用步骤
+
+### 11.2.1 创建新Consumer
+
+<img src='img\image-20221220203741451.png'>
+
+### 11.2.2 修改pom文件
+
+```xml
+<dependencies>
+    <!--openfeign-->
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-openfeign</artifactId>
+    </dependency>
+    <!--eureka client-->
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+    </dependency>
+    <!-- 引入自己定义的api通用包，可以使用Payment支付Entity -->
+    <dependency>
+        <groupId>com.ly.springcloud</groupId>
+        <artifactId>cloud-api-commons</artifactId>
+        <version>${project.version}</version>
+    </dependency>
+    <!--web-->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <!--一般基础通用配置-->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+```
+
+### 11.2.3 修改yaml文件
+
+```yaml
+server:
+  port: 80
+
+spring:
+  application:
+    name: cloud-order-service
+eureka:
+  client:
+    fetch-registry: true
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka/,http://eureka7002.com:7002/eureka/
+    register-with-eureka: true
+```
+
+### 11.2.4 创建主启动类
+
+```java
+@EnableFeignClients//代替@RibbonClient和@EurekaClient
+@SpringBootApplication
+public class OrderFeignMain80 {
+    public static void main(String[] args){
+      SpringApplication.run(OrderFeignMain80.class, args);
+    }
+}
+```
+
+### 11.2.5 创建Openfeign接口
+
+
+
+### 11.2.6 创建controller
+
+### 11.2.7 测试
+
+## 11.3 OpenFeign超时控制
+
+## 11.4 OpenFeign日志打印功能
 
 # 12 Hystrix断路器
 
