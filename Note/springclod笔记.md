@@ -2220,7 +2220,7 @@ Load Balance即负载均衡
   ​	将**LB逻辑集成到消费方**，消费方从服务注册中心获知有哪些地址可用，然后自己再从这些地址中选择出一个合适的服务器。**Ribbon就属于进程内LB**，它只是一个类库，**集成于消费方进程**，消费方通过它来获取到服务提供方的地址。
 
 
- 
+
 
  **总结：Ribbon就是负载均衡+RestTemplate**
 
@@ -2259,18 +2259,402 @@ Load Balance即负载均衡
 
 ### 10.4.1 IRule （接口）
 
-根据特定算法中从服务列表中选取一个要访问的服务，Ribbon自带的算法规则（IRule实现类）如下：
+根据特定算法中从服务列表中选取一个要访问的服务，**Ribbon自带的算法**规则（IRule实现类）如下：
 
 + RoundRobinRule（轮询规则）
 + RandomRule（随机）
 + RetryRule（先按照RoundRobinRule的策略获取服务，如果获取服务失败则在指定时间内会进行重试，获取可用的服务）
-+ 
++ WeightedResponseTimeRule（对RoundRobinRule的扩展，响应速度越快的实例选择权重越大，越容易被选择）
++ BestAvailableRule（会先过滤掉由于多次访问故障而处于断路器跳闸状态的服务，然后选择一个并发量最小的服务）
++ AvailabilityFilteringRule（先过滤掉故障实例，再选择并发较小的实例）
++ ZoneAvoidanceRule（默认规则,复合判断server所在区域的性能和server的可用性选择服务器）
 
 <img src='img\image-20221219163407777.png'>
 
 
 
+### 10.4.2 替换规则
+
+以Eureka项目中**cloud-consumer-order80**为例
+
+#### 10.4.2.1 规则配置细节
+
+官方文档明确给出了警告：
+这个**自定义配置类不能放在@ComponentScan所扫描的当前包下以及子包下**，否则我们自定义的这个配置类就会被所有的Ribbon客户端所共享，达不到特殊化定制的目的了。
+
+<img src='img\image-20221220095427365.png'>
+
+#### 10.4.2.2 新建package
+
++ 项目包：`com.ly.springcloud`
++ ribbon特殊规则包：`com.ly.myrule`
+
+#### 10.4.2.3 创建配置类
+
+```java
+package com.ly.myrule;
+
+import com.netflix.loadbalancer.IRule;
+import com.netflix.loadbalancer.RandomRule;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * FileName:MySelfRule.class
+ * Author:ly
+ * Date:2022/12/20 0020
+ * Description: 自定义ribbon负载均衡选择服务器的规则（不与主项目同包com.ly.springcloud）
+ */
+@Configuration
+public class MySelfRule {
+
+    @Bean
+    //组件RandomRule放入的不是spring的上下文，而是ribbon自己的上下文
+    public IRule myRule(){
+        //给ioc容器加入随机组件
+        return new RandomRule();
+    }
+}
+```
+
+#### 10.4.2.4 主启动类加@RibbonClient注解
+
+```java
+@EnableDiscoveryClient
+@EnableEurekaClient
+@SpringBootApplication
+//名字必须和controller中调用的一样才有效果，否则还是默认的
+//	所以不随spring容器初始化而创建，仅在调用负载均衡服务时创建
+@RibbonClient(name = "cloud-payment-service",configuration = {MySelfRule.class})
+public class OrderMain80 {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderMain80.class, args);
+    }
+}
+```
+
+#### 10.4.2.5 测试
+
+先后启动Eureka集群，provider集群8001，8002和consumer80
+
+参考连接：https://cloud.tencent.com/developer/article/2150851?from=15425
+
+<img src='img\image-20221220132548608.png'>
+
 ## 10.5 Ribbon负载均衡算法
+
+### 10.5.1 原理
+
+负载均衡算法：
+
++ **rest接口第几次请求数 % 服务器集群总数量 = 实际调用服务器位置下标  **
++ 每次服务重启动后rest接口计数从1开始。
+
+```java
+List\<ServiceInstance> instances = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");
+
+如：   List [0] instances = 127.0.0.1:8002
+　　　List [1] instances = 127.0.0.1:8001
+
+8001+ 8002 组合成为集群，它们共计2台机器，集群总数为2， 按照轮询算法原理：
+
+当总请求数为1时： 1 % 2 =1 对应下标位置为1 ，则获得服务地址为127.0.0.1:8001
+当总请求数位2时： 2 % 2 =0 对应下标位置为0 ，则获得服务地址为127.0.0.1:8002
+当总请求数位3时： 3 % 2 =1 对应下标位置为1 ，则获得服务地址为127.0.0.1:8001
+当总请求数位4时： 4 % 2 =0 对应下标位置为0 ，则获得服务地址为127.0.0.1:8002
+如此类推......
+```
+
+### 10.5.2 源码
+
+```JAVA
+//com.netflix.loadbalancer.RoundRobinRule
+
+//创建类时
+public RoundRobinRule() {
+        nextServerCyclicCounter = new AtomicInteger(0);//设置原子数
+    }
+
+//核心源码 由choose()调用
+ private int incrementAndGetModulo(int modulo) {
+     //这里用的是cas+自旋锁
+        for (;;) {
+            int current = nextServerCyclicCounter.get();
+            int next = (current + 1) % modulo;
+            //CAS有3个操作数，内存值V，旧的预期值A，要修改的新值B。当且仅当预期值A和内存值V相同时，将内存值V修改为B，否则什么都不做。
+            if (nextServerCyclicCounter.compareAndSet(current, next))
+                return next;
+        }
+    }
+```
+
+> CAS：Compare and Swap, 翻译成比较并交换。
+>
+> java.util.concurrent包中借助CAS实现了区别于synchronouse同步锁的一种乐观锁，使用这些类在多核CPU的机器上会有比较好的性能.
+>
+> ```java
+> //java.util.concurrent.atomic.AtomicInteger
+> public final boolean compareAndSet(int expect, int update) {
+>     /*
+>     	compareAndSet()有3个操作数，内存值valueOffset，旧的预期值expect，要修改的新值update。当且仅当预期值expect和内存值valueOffset相同时，将内存值valueOffset修改为update，否则什么都不做。
+>     */
+>         return unsafe.compareAndSwapInt(this, valueOffset, expect, update);
+>     }
+> ```
+>
+> JUC视频连接：https://www.bilibili.com/video/BV1ar4y1x727/?vd_source=bd522cbca55860eb7b29232fb02c02bd
+
+### 10.5.3 ==>自定义轮询算法和LoadBalancer负载均衡器*==
+
+#### 10.5.3.1 视频写法 
+
+原理借助cloud包下`@EnableDiscoveryClient`注解通过服务名，获取所有实例的环境信息（ip:port），然后自定义负载均衡器再实现轮询。
+
++ 去掉配置类中组件RestTemplate的@LoadBalanced注解
+
+  ```java
+  @Bean
+  //@LoadBalanced //否则无法直接识别eruka的服务名
+  public RestTemplate restTemplate() {
+      return new RestTemplateBuilder().build();
+  }
+  ```
+
++ 自定义负载均衡器规范（接口）
+
+  ```java
+  package com.ly.springcloud.lb;
+  
+  import org.springframework.cloud.client.ServiceInstance;
+  import java.util.List;
+  
+  public interface LoadBalancer {
+  
+      /**
+       * 从指定服务中的所有实例中，按照自定义轮询规则取出 实例
+       * @param serviceInstances 指定服务名的所有在线实例
+       * @return 按照自定义轮询规则取出 可用的实例
+       */
+      ServiceInstance getInstance(List<ServiceInstance> serviceInstances);
+  }
+  ```
+
++ 自定义负载均衡器实现类
+
+  ```java
+  package com.ly.springcloud.lb.impl;
+  
+  import com.ly.springcloud.lb.LoadBalancer;
+  import lombok.extern.slf4j.Slf4j;
+  import org.springframework.cloud.client.ServiceInstance;
+  import org.springframework.stereotype.Component;
+  
+  import java.util.List;
+  import java.util.concurrent.atomic.AtomicInteger;
+  
+  /**
+   * FileName:MyRoundLoadBalancer.class
+   * Author:ly
+   * Date:2022/12/20 0020
+   * Description: 基于自定义轮询规则的负载均衡器
+   */
+  @Slf4j
+  @Component
+  public class MyRoundLoadBalancer implements LoadBalancer {
+      private final AtomicInteger atomicInteger;
+  
+      public MyRoundLoadBalancer() {
+          this(new AtomicInteger(0));
+      }
+  
+      public MyRoundLoadBalancer(AtomicInteger atomicInteger) {
+          this.atomicInteger = atomicInteger;
+      }
+  
+      /**
+       * 自定义轮询的核心算法(cas+自旋锁)
+       * @param instances 所有在线的服务个数
+       * @return 实例的下标
+       */
+      public int getAndIncrementIndex(int instances){
+          int current;
+          int next;
+  
+          do {
+              current = atomicInteger.get() > Integer.MAX_VALUE ? 0 : atomicInteger.get();
+              next = (current + 1) % instances;
+          } while (!atomicInteger.compareAndSet(current,next));
+          log.info("获取到实例下标为:{}",next);
+          return next;
+      }
+  
+      @Override
+      public ServiceInstance getInstance(List<ServiceInstance> serviceInstances) {
+  
+          return serviceInstances.get(
+                  getAndIncrementIndex(serviceInstances.size())
+          );
+      }
+  }
+  ```
+
++ controller层调用
+
+  ```java
+  @Slf4j
+  @RestController
+  public class OrderController {
+      public static final String PAYMENT_URL = "http://cloud-payment-service";
+      public static final String APPLICATION_NAME = "cloud-payment-service";
+      @Autowired
+      private RestTemplate restTemplate;
+      @Autowired //根据服务名获取所有实例信息
+      private DiscoveryClient discoveryClient;
+      @Autowired //自定义负载均衡器
+      private LoadBalancer loadBalancer;
+  
+      @GetMapping("/consumer/payment/lb/get/{id}")
+      public CommonResult<Payment> getPaymentByIdOfLB(@PathVariable("id") Long id){
+  
+          ServiceInstance instance = loadBalancer.getInstance(
+                  discoveryClient.getInstances(APPLICATION_NAME)
+          );
+  
+          return restTemplate.getForObject(
+                  instance.getUri() + "/payment/get/" + id, CommonResult.class);
+      }
+  }
+  ```
+
++ 测试
+
+  <img src='img\image-20221220153440210.png'>
+
+#### 10.5.3.2 自己的写法
+
+原理借助cloud包下`@EnableDiscoveryClient`注解通过服务名，获取所有实例的环境信息（ip:port），然后通过默认的LoadBalancerInterceptor拦截器使用自定义轮询规则进行轮询。 （和10.4.2替换步骤完全一样）
+
++ ioc容器加入RestTemplate，并开启@LoadBalanced
+
++ 创建自定义轮询规则
+
+  ```java
+  package com.ly.myrule;
+  
+  import com.netflix.client.config.IClientConfig;
+  import com.netflix.loadbalancer.AbstractLoadBalancerRule;
+  import com.netflix.loadbalancer.ILoadBalancer;
+  import com.netflix.loadbalancer.Server;
+  import lombok.extern.slf4j.Slf4j;
+  
+  import java.util.concurrent.atomic.AtomicInteger;
+  
+  /**
+   * FileName:MyRoundStrategy.class
+   * Author:ly
+   * Date:2022/12/20 0020
+   * Description:
+   */
+  @Slf4j
+  public class MyRoundStrategy extends AbstractLoadBalancerRule {
+      private final AtomicInteger atomicInteger;
+  
+      public MyRoundStrategy() {
+          this(new AtomicInteger(0));
+      }
+  
+      public MyRoundStrategy(AtomicInteger atomicInteger) {
+          this.atomicInteger = atomicInteger;
+      }
+  
+      public MyRoundStrategy(ILoadBalancer lb) {
+          this();
+          setLoadBalancer(lb);
+      }
+  
+      /**
+       * 自定义轮询的核心算法(cas+自旋锁)
+       * @param instances 所有在线的服务个数
+       * @return 实例的下标
+       */
+      public int getAndIncrementIndex(int instances,Object key){
+          int current;
+          int next;
+  
+          do {
+              current = atomicInteger.get() > Integer.MAX_VALUE ? 0 : atomicInteger.get();
+              next = (current + 1) % instances;
+          } while (!atomicInteger.compareAndSet(current,next));
+          log.info("获取到实例下标为:{}",next);
+          return next;
+      }
+  
+      @Override
+      public void initWithNiwsConfig(IClientConfig iClientConfig) {
+  
+      }
+      public Server choose(ILoadBalancer lb,Object key) {
+          int index = getAndIncrementIndex(lb.getAllServers().size(), key);
+          return lb.getAllServers().get(index);
+      }
+      @Override
+      public Server choose(Object key) {
+          //log.info("key={}",key);
+          return choose(getLoadBalancer(),key);
+      }
+  }
+  ```
+
++ 修改配置类（主启动类包外）
+
+  ```java
+  package com.ly.myrule;
+  
+  import com.netflix.loadbalancer.IRule;
+  import lombok.extern.slf4j.Slf4j;
+  import org.springframework.context.annotation.Bean;
+  import org.springframework.context.annotation.Configuration;
+  
+  /**
+   * FileName:MySelfRule.class
+   * Author:ly
+   * Date:2022/12/20 0020
+   * Description: 自定义ribbon负载均衡选择服务器的规则（不与主项目同包）
+   */
+  @Slf4j
+  @Configuration
+  public class MySelfRule {
+  
+      //组件RandomRule放入的不是spring的上下文，而是ribbon自己的上下文，所以不随spring容器初始化而创建，仅在调用负载均衡服务时创建
+      @Bean
+      public IRule myRoundRule(){
+          //给ioc容器加入随机组件
+          log.info("MyRoundStrategy 成功加入ribbon ioc。。。");
+          return new MyRoundStrategy();
+      }
+  }
+  ```
+
++ 主启动类开启@RibonCLient
+
+  ```java
+  @EnableDiscoveryClient
+  @EnableEurekaClient
+  @SpringBootApplication
+  //服务名一定要和controller（使用的地方）中的一样，区分大小写
+  @RibbonClient(name = "cloud-payment-service",configuration = MySelfRule.class)
+  public class OrderMain80 {
+  
+      public static void main(String[] args) {
+          SpringApplication.run(OrderMain80.class, args);
+      }
+  }
+  ```
+
++ 测试
+
+  <img src='img\image-20221220160252772.png'>
 
 # 11  OpenFeign服务接口调用
 
