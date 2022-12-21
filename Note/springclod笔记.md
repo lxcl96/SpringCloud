@@ -2665,7 +2665,7 @@ public RoundRobinRule() {
 ​	**github官方地址：**https://github.com/spring-cloud/spring-cloud-openfeign
 
 ​	Feign是一个声明式WebService客户端。使用Feign能**让编写Web Service客户端更加简单（即consumer端）**。
-​	它的使用方法是**定义一个服务接口（和provider提供的接口完全一样）然后在上面添加注解**。Feign也支持可拔插式的编码器和解码器。Spring Cloud对Feign进行了封装，使其支持了Spring MVC标准注解和HttpMessageConverters。Feign可以与Eureka和Ribbon组合使用以支持负载均衡
+​	它的使用方法是**定义一个服务接口（和provider提供的controller完全一样）然后在上面添加注解**。Feign也支持可拔插式的编码器和解码器。Spring Cloud对Feign进行了封装，使其支持了Spring MVC标准注解和HttpMessageConverters。Feign可以与Eureka和Ribbon组合使用以支持负载均衡
 
 <img src='img\image-20221220202230588.png'>
 
@@ -2751,7 +2751,8 @@ eureka:
 ### 11.2.4 创建主启动类
 
 ```java
-@EnableFeignClients//代替@RibbonClient和@EurekaClient
+@EnableEurekaClient//加不加都可以，都会自动注册到eureka中，这是因为自动配置类的效果
+@EnableFeignClients
 @SpringBootApplication
 public class OrderFeignMain80 {
     public static void main(String[] args){
@@ -2759,6 +2760,8 @@ public class OrderFeignMain80 {
     }
 }
 ```
+
+> @EnableEurekaClient加不加都可以的原因： https://blog.csdn.net/sunxy24/article/details/105686511
 
 ### 11.2.5 ==创建Openfeign接口*==
 
@@ -2840,7 +2843,78 @@ public class OrderFeignController {
 
 ## 11.3 OpenFeign超时控制
 
+openfeign默认超时时间为1秒钟，但是对于某些provider提供的接口处理很耗费时间，那么此时就会产生超时。
 
+### 11.3.1 feign超时情况
+
++ 关掉Provider 8002服务，开启eureka集群和provider8001服务
+
++ provider8001服务新增接口功能，表示当前业务处理耗时（记得重启服务）
+
+  ```java
+  //provider端8001 controller
+  @GetMapping("/payment/feign/timeout")
+  public String paymentFeignTimeout() throws InterruptedException {
+      //模拟耗时业务
+      TimeUnit.SECONDS.sleep(3);
+      return serverPort;
+  }
+  ```
+
++ 消费者端建立对应openfeign函数
+
+  ```java
+  //消费者端 openfeign接口
+  @Component
+  @FeignClient(name = "cloud-payment-service")//provider服务名
+  public interface PaymentFeignService {
+  
+      @GetMapping("/payment/create")
+      CommonResult create(Payment payment);
+  
+      @GetMapping("/payment/get/{id}")
+      CommonResult getPaymentById(@PathVariable("id") Long id);
+  
+      /**
+       * 模拟业务端复杂耗时业务
+       * @return 结果
+       */
+      @GetMapping("/payment/feign/timeout")
+      String paymentFeignTimeout();
+  }
+  ```
+
++ 消费者端调用controller
+
+  ```java
+  @GetMapping("/consumer/payment/feign/timeout")
+  public String paymentFeignTimeout(){
+      return paymentFeignService.paymentFeignTimeout();
+  }
+  ```
+
++ 测试（预期出现超时错误）
+
+  <img src='img\image-20221221104443182.png'>
+
+### 11.3.2 设置openfeign的超时时间
+
+首先要明确openfeign底层还是Ribbon+RestTemplate，只是对其做了一层封装。
+
++ 配置文件修改Ribbon的超时时间
+
+  ```yaml
+  #设置feign客户端超时时间(OpenFeign默认支持ribbon)
+  ribbon:
+    #指的是建立连接后从服务器读取到可用资源所用的时间
+    ReadTimeout: 5000
+    #指的是建立连接所用的时间，适用于网络状况正常的情况下,两端连接所用的时间
+    ConnectTimeout: 5000
+  ```
+
++ 测试
+
+  <img src='img\image-20221221105459598.png'>
 
 ## 11.4 OpenFeign日志打印功能
 

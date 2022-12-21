@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * FileName:PaymentController.class
@@ -116,5 +117,12 @@ public class PaymentController {
                 ReturnResultEnum.NOT_FOUND.getMessage(),
                 map
         );
+    }
+
+    @GetMapping("/payment/feign/timeout")
+    public String paymentFeignTimeout() throws InterruptedException {
+        //模拟耗时业务
+        TimeUnit.SECONDS.sleep(3);
+        return serverPort;
     }
 }

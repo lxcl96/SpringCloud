@@ -37,4 +37,11 @@ public interface PaymentFeignService {
      */
     @GetMapping("/payment/get/{id}")
     CommonResult getPaymentById(@PathVariable("id") Long id);
+
+    /**
+     * 模拟业务端复杂耗时业务
+     * @return 结果
+     */
+    @GetMapping("/payment/feign/timeout")
+    String paymentFeignTimeout();
 }

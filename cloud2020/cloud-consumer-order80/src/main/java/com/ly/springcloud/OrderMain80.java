@@ -14,7 +14,7 @@ import org.springframework.cloud.netflix.ribbon.RibbonClient;
  * Description: 消费者端
  */
 @EnableDiscoveryClient
-@EnableEurekaClient
+//@EnableEurekaClient
 @SpringBootApplication
 @RibbonClient(name = "cloud-payment-service",configuration = MySelfRule.class)
 public class OrderMain80 {
