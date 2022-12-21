@@ -17,3 +17,8 @@ ribbon:
   ReadTimeout: 5000
   #指的是建立连接所用的时间，适用于网络状况正常的情况下,两端连接所用的时间
   ConnectTimeout: 5000
+
+logging:
+  level: # debug 直接指定当前项目下所有类的日志等级
+    # 通过指定类名（最小单位，类 ），表名某一类的日志等级（springboot功能）
+    com.ly.springcloud.service.PaymentFeignService: debug

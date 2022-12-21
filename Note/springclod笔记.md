@@ -2918,6 +2918,46 @@ openfeign默认超时时间为1秒钟，但是对于某些provider提供的接�
 
 ## 11.4 OpenFeign日志打印功能
 
+​	Feign 提供了日志打印功能，我们可以通过配置来调整日志级别，从而了解 Feign 中 Http 请求的细节。说白了就是**对Feign接口（接口类，不是controller）的调用情况进行监控和输出**
+
+### 11.4.1 OpenFeign日志级别
+
++ `NONE`：默认的，不显示任何日志；
++ `BASIC`：仅记录请求方法、URL、响应状态码及执行时间；
++ `HEADERS`：除了 BASIC 中定义的信息之外，还有请求和响应的头信息；
++ `FULL`：除了 HEADERS 中定义的信息之外，还有请求和响应的正文及元数据。
+
+<img src='img\image-20221221131130459.png'>
+
+### 11.4.2 使用步骤
+
++ 通过配置类，给ioc容器中加入组件日志等级
+
+  ```java
+  @Configuration
+  public class OpenFeignConfig {
+      
+      @Bean
+      public Logger.Level openFeignLogLevel() {
+          //需要什么等级的日志，就将该等级对应的枚举类加入ioc容器
+          return Logger.Level.FULL;
+      }
+  }
+  ```
+
++ 配置文件中，配置对那个openfeign接口开启日志打印
+
+  ```yaml
+  logging:
+    level: # debug 直接指定当前项目下所有类的日志等级 
+      # 通过指定类名（最小单位，类 ），表名某一类的日志等级（springboot功能）
+      com.ly.springcloud.service.PaymentFeignService: debug
+  ```
+
++ 测试
+
+  <img src='img\image-20221221132246891.png'>
+
 # 12 Hystrix断路器
 
 
