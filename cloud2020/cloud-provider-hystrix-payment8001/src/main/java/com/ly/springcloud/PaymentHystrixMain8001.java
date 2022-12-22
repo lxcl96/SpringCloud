@@ -2,8 +2,9 @@ package com.ly.springcloud;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.circuitbreaker.EnableCircuitBreaker;
 import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
-import org.springframework.cloud.netflix.hystrix.EnableHystrix;
+
 
 /**
  * FileName:PaymentHystrixMain8001.class
@@ -13,6 +14,7 @@ import org.springframework.cloud.netflix.hystrix.EnableHystrix;
  */
 @EnableEurekaClient//可写可不写，默认开启
 //@EnableHystrix
+@EnableCircuitBreaker//cloud提供的公共注解，会自动找到断路器的实现即Hystrix 效果等同于@EnableHystrix
 @SpringBootApplication
 public class PaymentHystrixMain8001 {
 

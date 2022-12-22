@@ -18,4 +18,7 @@ public interface PaymentHystrixService {
 
     @GetMapping("/payment/hystrix/failure")
     String failure();
+
+    @GetMapping("/payment/hystrix/exception")
+    String exception();
 }

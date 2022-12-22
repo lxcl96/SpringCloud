@@ -2990,7 +2990,7 @@ openfeign默认超时时间为1秒钟，但是对于某些provider提供的接�
 
 ## 12.2 Hystrix概念
 
-<font color='red'>***服务端和客户端都可以用Hystrix，但是一般都是用在客户端***</font>
+<font color='red'>***服务端和客户端都可以用Hystrix***</font>
 
 ### 12.2.1 服务降级
 
@@ -3083,7 +3083,7 @@ eureka:
 
 ```java
 @EnableEurekaClient//可写可不写，默认开启
-//@EnableHystrix //暂时不加，模拟出错（加在服务端或客户端都可以，一般都是在客户端）
+//@EnableHystrix //暂时不加，模拟出错（加在服务端或客户端都可以）
 @SpringBootApplication
 public class PaymentHystrixMain8001 {
 
@@ -3331,6 +3331,268 @@ public class OrderHystrixController {
 + 对方服务(8001)down机了，调用者(80)不能一直卡死等待，必须有服务降级
 + 对方服务(8001)OK，调用者(80)自己出故障或有自我要求（自己的等待时间小于服务提供者），自己处理降级
 
-##### 12.3.5 
+### 12.3.5 ==服务降级-解决方案*==
+
+#### 12.3.5.1 服务端服务降级 `@HystrixCommand`
+
+##### 12.3.5.1.1 超时（可以捕获）
+
+首先规定，服务端运行业务逻辑运行超过2秒就是异常，代码中运行时3秒，则运行必然超时。
+
++ service层业务逻辑
+
+  ```java
+  @Override
+  public String failure() throws InterruptedException {
+      log.info("线程：{}【开始】模拟出错业务逻辑service...",Thread.currentThread().getName());
+      TimeUnit.SECONDS.sleep(3);
+      log.info("线程：{}【结束】模拟出错业务逻辑service...",Thread.currentThread().getName());
+      return "ok";
+  }
+  ```
+
++ 业务类定义服务降级回调，并规定超时时间
+
+  ```java
+  /**
+       *  当前controller方法，必须会运行3s，大于设置的2s峰值，就会回调fallbackMethod方法
+       *      此之谓服务降级（降级到出错提示）
+       *      注解@HystrixCommand 定义服务降级，会隔离tomcat的线程池单独使用一个额外的线程
+       */
+      @HystrixCommand(
+              //定义失败的回调函数
+              fallbackMethod = "failureHandler",
+              //定义业务线程的属性(如最大运行时间,超过此时间就会触发业务降级回调failureHandler)
+              commandProperties = @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "2000")
+      )
+      @GetMapping("/payment/hystrix/failure")
+      public String failure() throws InterruptedException {
+          log.info("线程：{} 正常业务逻辑controller：",Thread.currentThread().getName());
+          return paymentService.failure();
+      }
+  
+      public String failureHandler() {
+          log.info("线程：{} 服务降级逻辑controller：",Thread.currentThread().getName());
+          return "X﹏X";
+      }
+  ```
+
++ 主启动类（放在配置类上效果一样）开启断路器（使用的是springcloud的公共注解`@EnableCircuitBreaker`）
+
+  ```java
+  @EnableEurekaClient//可写可不写，默认开启
+  //@EnableHystrix
+  @EnableCircuitBreaker//cloud提供的公共注解，会自动找到断路器的实现即Hystrix 效果等同于@EnableHystrix
+  @SpringBootApplication
+  public class PaymentHystrixMain8001 {
+  
+      public static void main(String[] args){
+        SpringApplication.run(PaymentHystrixMain8001.class, args);
+      }
+  }
+  ```
+
++ 测试
+
+  + 先发送正常的业务请求
+
+    <img src='img\image-20221222095231543.png'>
+
+  + 再发生错误的业务请求
+
+    <img src='img\image-20221222095342093.png'>
+
+  + 比较后台日志
+
+    <font color='red'>***不仅做到了线程池隔离，而且超时后中断了错误业务service的继续执行***</font>
+
+    <img src='img\image-20221222100131917.png'>
+
+##### 12.3.5.1.2 运行异常（可以捕获）
+
++ service服务
+
+  ```java
+  @Override
+      public String exception() {
+          log.info("线程：{}【开始】模拟异常业务逻辑service...",Thread.currentThread().getName());
+          int i = 10 / 0;//运行异常
+          log.info("线程：{}【结束】模拟异常业务逻辑service...",Thread.currentThread().getName());
+          return "ok";
+      }
+  ```
+
++ controller层调用及服务降级
+
+  ```java
+  public String failureHandler() {
+      log.info("线程：{} 服务降级逻辑controller：",Thread.currentThread().getName());
+      return "X﹏X";
+  }
+  //仅仅定义服务降级回调，当出现异常时自动调用
+  @HystrixCommand(fallbackMethod = "failureHandler")
+  @GetMapping("/payment/hystrix/exception")
+  public String exception() {
+      return paymentService.exception();
+  }
+  ```
+
++ 使用`@EnableCircuitBreaker`开启断路器（上面已开启）
+
++ 测试
+
+  <img src='img\image-20221222101651786.png'>
+
+  <img src='img\image-20221222102036469.png'>
+
+#### 12.3.5.2 客户端服务降级
+
+##### 12.3.5.2.1 ==客户端服务降级的情况*==
+
+相对于服务端的超时导致的服务降级，客户端超时会有两种情况：
+
++ ***同服务端一样，超过了`@HystrixCommand`断路器设置的超时时间***
++ ***客户端特有的，超过了OpenFeign/Ribbon的超时时间（默认1s）***
+
+总而言之都是规定时间内没有收到来自客户端的回应导致的超时，服务降级。
+
+##### 12.3.5.2.2 超时（可以捕获）
+
+客户端和服务端的要求会不同，所以客户端也需要服务降级功能。
+
++ 配置文件开启openfeign对hystrix断路器的支持
+
+  ```yaml
+  feign:
+    hystrix:
+      enabled: true
+  ```
+
++ 程序开启断路器
+
+  ```java
+  @EnableHystrix//或者@EnableCircuitBreaker都可以
+  @SpringBootApplication
+  @EnableFeignClients
+  public class OrderHystrixMain80 {
+      public static void main(String[] args){
+        SpringApplication.run(OrderHystrixMain80.class, args);
+      }
+  }
+  ```
+
++ controller层
+
+  ```java
+  public String failureFallbackMethod() {
+      log.info("客户端 [{}] 服务降级回调。",Thread.currentThread().getName());
+      return "超时，请稍后再试！ ";
+  }
+  
+  @HystrixCommand(
+          fallbackMethod = "failureFallbackMethod",
+          commandProperties = @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "2500")
+  )
+  @GetMapping("/consumer/payment/hystrix/failure")
+  public String failure() {
+      log.info("客户端 [{}] controller业务。",Thread.currentThread().getName());
+      return paymentHystrixService.failure();
+  }
+  ```
+
++ 测试
+
+  由于Ribbonm默认会对get请求进行1次重试（间隔1s默认），重试也算时间，为了准确特修改：
+
+  ```yaml
+  ribbon:
+  #  ConnectTimeout: 50000 # 连接超时时间(ms)
+  #  ReadTimeout: 50000 # 通信超时时间(ms)
+    OkToRetryOnAllOperations: false # 是否对所有操作重试 默认为false
+    MaxAutoRetriesNextServer: 0 # 同一服务不同实例的重试次数 默认为1
+    MaxAutoRetries: 0 # 同一实例的重试次数 默认为0
+  ```
+  
+  + 未设置openfeign（ribbon）的超时时间默认1s，设置服务端3s超时，客户端2.5s超时 （第一种情况）
+  
+    > ***客户端特有的，超过了OpenFeign/Ribbon的超时时间（默认1s）***
+    >
+    > <img src='img\image-20221222162826548.png'>
+    >
+    > ```java
+    > //客户端日志 重点看时间
+    > 2022-12-22 16:27:33.617  INFO 12700 --- [rixController-9] c.l.s.controller.OrderHystrixController  : 客户端 [hystrix-OrderHystrixController-9] controller业务。
+    > 2022-12-22 16:27:34.626  INFO 12700 --- [rixController-9] c.l.s.controller.OrderHystrixController  : 客户端 [hystrix-OrderHystrixController-9] 服务降级回调。
+    > ```
+    >
+    > ```java
+    > //服务端日志  （关闭get请求重试，则只有一个请求）
+    > 2022-12-22 16:27:33.625  INFO 15152 --- [entController-9] c.l.s.controller.PaymentController       : 线程：hystrix-PaymentController-9 正常业务逻辑controller：
+    > 2022-12-22 16:27:33.625  INFO 15152 --- [entController-9] c.l.s.service.impl.PaymentServiceImpl    : 线程：hystrix-PaymentController-9【开始】模拟出错业务逻辑service...
+    > 2022-12-22 16:27:36.626  INFO 15152 --- [ HystrixTimer-3] c.l.s.controller.PaymentController       : 线程：HystrixTimer-3 服务降级逻辑controller：
+    > ```
+  
+    
+  
+  + 设置openfeign（ribbon）的超时时间为5s，设置服务端3s超时，客户端2.5s超时 （第二种情况）
+  
+    > ***同服务端一样，超过了`@HystrixCommand`断路器设置的超时时间***
+    >
+    > <img src='img\image-20221222163325017.png'>
+    >
+    > ```java
+    > //客户端日志 重点看时间
+    > 2022-12-22 16:32:06.315  INFO 6504 --- [rixController-2] c.l.s.controller.OrderHystrixController  : 客户端 [hystrix-OrderHystrixController-2] controller业务。
+    > 2022-12-22 16:32:08.816  INFO 6504 --- [ HystrixTimer-1] c.l.s.controller.OrderHystrixController  : 客户端 [HystrixTimer-1] 服务降级回调。
+    > ```
+    >
+    > ```java
+    > //服务端
+    > 2022-12-22 16:32:06.319  INFO 15152 --- [ntController-10] c.l.s.controller.PaymentController       : 线程：hystrix-PaymentController-10 正常业务逻辑controller：
+    > 2022-12-22 16:32:06.320  INFO 15152 --- [ntController-10] c.l.s.service.impl.PaymentServiceImpl    : 线程：hystrix-PaymentController-10【开始】模拟出错业务逻辑service...
+    > 2022-12-22 16:32:09.321  INFO 15152 --- [ HystrixTimer-2] c.l.s.controller.PaymentController       : 线程：HystrixTimer-2 服务降级逻辑controller：
+    > ```
+
+##### 12.3.5.2.3 运行异常（可以捕获）
+
+同生产端
+
+##### 12.3.5.2.4 特殊情况
+
+​	如果**服务端超时了**，进行服务降级，但是**客户端既没超过`Ribbon`的超时时间，也没超过`Hystrix`的超时时间**，那么**客户端就不会超时**，也就不会触发客户端服务降级。但是**接收到**的结果还是**服务端超时结果**！
+
+如：设置ribbon超时时间为5s，服务端超时时间为2s，客户端超时时间为3s，关闭ribbon的get请求重试功能
+
+<img src='img\image-20221222164647839.png'>
+
+
+
+### 12.3.6 ==服务熔断-解决方案*==
+
+### 12.3.7 ==服务限流-解决方案*==
+
+
+
+# 13 OpenFeign、Ribbon和Hystrix超时时间配置规则*
+
+## 13.1 `Feign` 和 `Ribbon`
+
+`Feign` 和 `Ribbon` 的超时时间**只会有一个生效**，规则：
+
+- 如果**没有设置过feign超时**（也就是等于默认值的时候），就会**读取 ribbon 的配置**，使用 ribbon 的超时时间和重试设置。
+- 如果***设置了***feign超时，***则使用 feign 自身的设置***。两者是二选一的，***且 feign 优先***。
+
+## 13.2 `Ribbon`和`Hystrix`
+
+- 如果请求时间超过 ribbon 的超时配置，会触发重试；
+- 在配置 fallback 的情况下，如果请求的时间(包括 ribbon 的重试时间)，超出了 ribbon 的超时限制，或者 hystrix 的超时限制，那么就会熔断。
+
+一般来说，会设置 ribbon 的超时时间 < hystrix， 这是因为 ribbon 有重试机制。(这里说的 ribbon 超时时间是包括重试在内的，即，最好要让 ribbon 的重试全部执行，直到 ribbon 超时被触发)
+
+**由于 connectionTime 一般比较短，可以忽略**。那么，设置的超时时间应该满足如下，***\*避免ribbon还未重试完就过早的被Hystrix熔断了\****：
+
+```java
+(1 + MaxAutoRetries) * (1 + MaxAutoRetriesNextServer)* ReadTimeOut < hystrix 的 *timeoutInMilliseconds
+```
 
 # 13 zuul路由网关
