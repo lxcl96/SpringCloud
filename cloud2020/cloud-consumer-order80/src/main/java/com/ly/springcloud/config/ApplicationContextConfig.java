@@ -18,7 +18,7 @@ import org.springframework.web.client.RestTemplate;
 public class ApplicationContextConfig {
 
     @Bean
-    @LoadBalanced //否则无法直接识别eureka的服务名
+    //@LoadBalanced //否则无法直接识别eureka的服务名
     public RestTemplate restTemplate() {
         return new RestTemplateBuilder().build();
     }

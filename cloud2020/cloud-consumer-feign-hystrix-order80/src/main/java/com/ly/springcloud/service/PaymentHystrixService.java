@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
  * Date:2022/12/21 0021
  * Description:
  */
-@FeignClient("cloud-provider-hystrix-payment")//注册到eureka的服务名
+@FeignClient(value = "cloud-provider-hystrix-payment",fallback = PaymentFallbackService.class)//注册到eureka的服务名
 public interface PaymentHystrixService {
     //下面为对应的服务端的controller接口
 

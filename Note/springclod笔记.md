@@ -2280,7 +2280,20 @@ Load Balance即负载均衡
 #### 10.4.2.1 规则配置细节
 
 官方文档明确给出了警告：
-这个**自定义配置类不能放在@ComponentScan所扫描的当前包下以及子包下**，否则我们自定义的这个配置类就会被所有的Ribbon客户端所共享，达不到特殊化定制的目的了。
+这个**自定义配置类不能放在@ComponentScan所扫描的当前包下以及子包下**，否则我们自定义的这个配置类就会被**所有[@RibbonClients](https://github.com/RibbonClients)共享**，达不到特殊化定制的目的了。
+
+> 因为一个客户端可以使用连接多个微服务
+>
+> ```java
+> @RibbonClient(name = "cloud-payment-service",configuration = MySelfRule.class)
+> //区别于
+> @RibbonClients(
+>     //放在包扫描外面，不同微服务ribbon使用不同的策略
+>     //放在包扫描内，不同微服务ribbon使用相同的策略
+> 	@RibbonClient(name = "cloud-payment1-service",configuration = RandomRule.class)
+>     @RibbonClient(name = "cloud-payment2-service",configuration = MySelfRule.class)
+> )
+> ```
 
 <img src='img\image-20221220095427365.png'>
 
@@ -2480,7 +2493,7 @@ public RoundRobinRule() {
       public int getAndIncrementIndex(int instances){
           int current;
           int next;
-  
+  		//下面循环的算法没有问题，每次都执行一次，不循环
           do {
               current = atomicInteger.get() > Integer.MAX_VALUE ? 0 : atomicInteger.get();
               next = (current + 1) % instances;
@@ -2765,7 +2778,7 @@ public class OrderFeignMain80 {
 
 ### 11.2.5 ==创建Openfeign接口*==
 
-<font color='red'>***最重要使用OpenFeign的接口（PaymentFeignService），内部函数定义的返回值必须和provider的controller返回值完全一样才行。***</font>
+<font color='red'>***最重要：使用OpenFeign的接口（PaymentFeignService），内部函数定义的返回值必须和provider的controller返回值完全一样才行。***</font>
 
 <img src='img\image-20221221093347811.png'>
 
@@ -2783,9 +2796,9 @@ import org.springframework.web.bind.annotation.PathVariable;
  * FileName：PaymentFeignService.java
  * Author：Ly
  * Date：2022/12/20
- * Description： 与Provider端的service端接口完全一样的feign接口,而且必须加入ioc容器方便使用
+ * Description： 与Provider端的service端（实际是controller）接口完全一样的feign接口,而且必须加入ioc容器方便使用
  */
-@Component
+//@Component//不需要放入容器中，因为openfeign会自动实现当前类并放入容器中，可见不需要当前类
 @FeignClient(name = "cloud-payment-service")//provider服务名
 public interface PaymentFeignService {
 
@@ -2948,9 +2961,10 @@ openfeign默认超时时间为1秒钟，但是对于某些provider提供的接�
 + 配置文件中，配置对那个openfeign接口开启日志打印
 
   ```yaml
+  # 这是springboot的配置
   logging:
     level: # debug 直接指定当前项目下所有类的日志等级 
-      # 通过指定类名（最小单位，类 ），表名某一类的日志等级（springboot功能）
+      # 通过指定类名（最小单位，类 ），表明某一类的日志等级（springboot功能）
       com.ly.springcloud.service.PaymentFeignService: debug
   ```
 
@@ -3328,7 +3342,7 @@ public class OrderHystrixController {
 ### 12.3.4  对于故障的要求
 
 + 对方服务(8001)超时了，调用者(80)不能一直卡死等待，必须有服务降级
-+ 对方服务(8001)down机了，调用者(80)不能一直卡死等待，必须有服务降级
++ 对方服务(8001)宕机了，调用者(80)不能一直卡死等待，必须有服务降级
 + 对方服务(8001)OK，调用者(80)自己出故障或有自我要求（自己的等待时间小于服务提供者），自己处理降级
 
 ### 12.3.5 ==服务降级-解决方案*==
@@ -3339,7 +3353,7 @@ public class OrderHystrixController {
 
 首先规定，服务端运行业务逻辑运行超过2秒就是异常，代码中运行时3秒，则运行必然超时。
 
-+ service层业务逻辑
++ service层（provider端）业务逻辑
 
   ```java
   @Override
@@ -3351,7 +3365,7 @@ public class OrderHystrixController {
   }
   ```
 
-+ 业务类定义服务降级回调，并规定超时时间
++ 业务类（provider端）定义服务降级回调，并规定超时时间
 
   ```java
   /**
@@ -3360,7 +3374,7 @@ public class OrderHystrixController {
        *      注解@HystrixCommand 定义服务降级，会隔离tomcat的线程池单独使用一个额外的线程
        */
       @HystrixCommand(
-              //定义失败的回调函数
+              //定义失败的回调函数（ 必须是当前类中的函数）
               fallbackMethod = "failureHandler",
               //定义业务线程的属性(如最大运行时间,超过此时间就会触发业务降级回调failureHandler)
               commandProperties = @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "2000")
@@ -3377,7 +3391,7 @@ public class OrderHystrixController {
       }
   ```
 
-+ 主启动类（放在配置类上效果一样）开启断路器（使用的是springcloud的公共注解`@EnableCircuitBreaker`）
++ 主启动类（provider端）（放在配置类上效果一样）开启断路器（使用的是springcloud的公共注解`@EnableCircuitBreaker`）
 
   ```java
   @EnableEurekaClient//可写可不写，默认开启
@@ -3410,7 +3424,7 @@ public class OrderHystrixController {
 
 ##### 12.3.5.1.2 运行异常（可以捕获）
 
-+ service服务
++ service服务（provider端）
 
   ```java
   @Override
@@ -3422,7 +3436,7 @@ public class OrderHystrixController {
       }
   ```
 
-+ controller层调用及服务降级
++ controller层（provider端）调用及服务降级
 
   ```java
   public String failureHandler() {
@@ -3433,6 +3447,7 @@ public class OrderHystrixController {
   @HystrixCommand(fallbackMethod = "failureHandler")
   @GetMapping("/payment/hystrix/exception")
   public String exception() {
+      log.info("线程：{} 正常业务逻辑controller：",Thread.currentThread().getName());
       return paymentService.exception();
   }
   ```
@@ -3557,15 +3572,184 @@ public class OrderHystrixController {
 
 同生产端
 
-##### 12.3.5.2.4 特殊情况
+##### 12.3.5.2.4 ==特殊情况*==
 
 ​	如果**服务端超时了**，进行服务降级，但是**客户端既没超过`Ribbon`的超时时间，也没超过`Hystrix`的超时时间**，那么**客户端就不会超时**，也就不会触发客户端服务降级。但是**接收到**的结果还是**服务端超时结果**！
 
 如：设置ribbon超时时间为5s，服务端超时时间为2s，客户端超时时间为3s，关闭ribbon的get请求重试功能
 
+> 其实很好理解，客户端只是调用服务端的接口，返回的结果就是服务端处理后的内容，和客户端没有任何关系。
+
 <img src='img\image-20221222164647839.png'>
 
 
+
+#### 12.3.5.3 问题1-代码膨胀
+
+由于每一个业务测层方法都有一个兜底的回调fallback函数，并且此函数只能在本类中，这就导致fallback方法很多。
+
+##### 12.3.5.3.1 ***解决方法：***
+
+***使用注解`@DefaultProperties(defaultFallback = "")`定义公共/默认的fallback方法***
+
+```java
+@Slf4j
+@RestController
+//该注解放在服务端或客户端都可以，因为服务降级同时支持两端
+@DefaultProperties(defaultFallback = "globalFallBack")
+public class OrderHystrixController {
+
+    @Resource
+    private PaymentHystrixService paymentHystrixService;
+	//指定fallback
+    public String failureFallbackMethod() {
+        log.info("客户端 [{}] 服务降级回调。",Thread.currentThread().getName());
+        return "超时，请稍后再试！ ";
+    }
+	//默认全局fallback，必须是无参数
+    public String globalFallBack() {
+        log.info("【global fallback】 客户端 [{}] 出现异常",Thread.currentThread().getName());
+        return "【global fallback】 失败，请稍后再试！ ";
+    }
+	
+    @HystrixCommand( //指定服务降级方法，不会调用全局的fallback了
+            fallbackMethod = "failureFallbackMethod",
+            commandProperties = @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "3000")
+    )
+    @GetMapping("/consumer/payment/hystrix/failure")
+    public String failure() {
+        log.info("客户端 [{}] controller业务。",Thread.currentThread().getName());
+        return paymentHystrixService.failure();
+    }
+    
+    //加上@HystrixCommand 表示该方法会进行服务降级，不指定降级方法会自动使用@DefaultProperties定义的方法
+    @HystrixCommand 
+    @GetMapping("/consumer/payment/hystrix/global/failure")
+    public String globalFailure() {
+        int i = 10 / 0;
+        return paymentHystrixService.ok();
+    }
+    
+    //正常业务，不需要进行服务降级的
+    @GetMapping("/consumer/payment/hystrix/ok")
+    public String ok() {
+        return paymentHystrixService.ok();
+    }
+}
+```
+
+##### 12.3.5.3.2 ***测试***
+
+<img src='img\image-20230131155435849.png'>
+
+#### 12.3.5.4 问题2-逻辑混乱
+
+由于每一个业务测层方法都有一个兜底的回调fallback函数，并且此函数只能在本类中，这就导致fallback方法很多，和业务逻辑混在一起就显得很混乱。
+
+同时服务降级有客户端和服务端两种触发方式，如果不加以区分则不方便分辨出此次服务降级到底是服务端调用还是客户端。
+
+##### 12.3.5.4.1 三种异常
+
++ 运行异常
++ 超时
++ 宕机
+
+##### 12.3.5.4.2 针对客户端的服务降级
+
+==*下面方法只能处理来自服务端的三种异常，无法处理客户端的异常*==
+
++ 创建类`PaymentFallbackService`实现openfeign接口`PaymentHystrixService`,并重写方法
+
+  ```java
+   /* Description: 继承openFeign接口，创建默认fallback方法（和@HysrixCommand的唯一区别就是方法名字）
+   	其实就是默认回调函数，同上面的global方法
+   */
+  @Component //放入容器中别忘了
+  public class PaymentFallbackService implements PaymentHystrixService{
+      @Override
+      public String ok() {//类实现保证了 本类
+          return "openFeign的默认回调（服务端） ok方法降级";
+      }
+  
+      @Override
+      public String failure() {
+          return "openFeign的默认回调（服务端） failure方法降级";
+      }
+  
+      @Override
+      public String exception() {
+          return "openFeign的默认回调（服务端） exception方法降级";
+      }
+  }
+  ```
+
++ 实现openfeign接口`PaymentHystrixService`指明服务端出现异常，默认采用的回调方法
+
+  ```java
+  @FeignClient(value = "cloud-provider-hystrix-payment",fallback = PaymentFallbackService.class)//注册到eureka的服务名
+  public interface PaymentHystrixService {
+      //下面为对应的服务端的controller接口
+  
+      @GetMapping("/payment/hystrix/ok")
+      String ok();
+  
+      @GetMapping("/payment/hystrix/failure")
+      String failure();
+  
+      @GetMapping("/payment/hystrix/exception")
+      String exception();
+  }
+  ```
+
++ 开启openFeign的hystrix
+
+  ```yaml
+  ribbon:
+    ConnectTimeout: 5000 # 连接超时时间(ms)
+    ReadTimeout: 5000 # 通信超时时间(ms)
+    OkToRetryOnAllOperations: false # 是否对所有操作重试 默认为false
+    MaxAutoRetriesNextServer: 0 # 同一服务不同实例的重试次数 默认为1
+    MaxAutoRetries: 0 # 同一实例的重试次数 默认为0
+  
+  # 由于开启了feign，则默认超时就是1s以feign的为准，上面配置了ribbon时间也没用
+  feign:
+    hystrix:
+      enabled: true
+  ```
+
+  ##### 12.3.5.4.3 测试
+
+  > ***服务端活着***
+  >
+  > + 测试没问题的openFeign中的ok方法（**正常执行**）
+  >
+  >   <img src='img\image-20230131163659825.png'>
+  >
+  > + 服务端超时，客户端不超时
+  >
+  >   由于配置文件启动了`feign.hystrix.enabled=true`所以feign默认超时就是1s（feign优先），配置ribbon超时也没用。
+  >
+  >   所以修改服务端`/payment/hystrix/failure`接口对应的方法超时时间改为500ms，保证服务端超时，客户端不超时
+  >
+  >   <img src='img\image-20230131171051786.png'>
+  >
+  > + 客户端超时，不管服务端超没超时
+  >
+  >   <img src='img\image-20230131171421519.png'>
+  >
+  > + 
+  >
+  > ***服务端宕机***
+  >
+  > + 测试没问题的openFeign中的ok方法
+  >
+  >   <img src='img\image-20230131163906075.png'>
+  >
+  > + 测试有问题的
+  >
+  >   <img src='img\image-20230131171241298.png'>
+  >
+  > + 
 
 ### 12.3.6 ==服务熔断-解决方案*==
 
@@ -3573,7 +3757,7 @@ public class OrderHystrixController {
 
 
 
-# 13 OpenFeign、Ribbon和Hystrix超时时间配置规则*
+# 13 ==OpenFeign、Ribbon和Hystrix超时时间配置规则*==
 
 ## 13.1 `Feign` 和 `Ribbon`
 
