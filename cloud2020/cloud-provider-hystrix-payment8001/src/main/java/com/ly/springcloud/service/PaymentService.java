@@ -33,4 +33,11 @@ public interface PaymentService {
      * @return 结果
      */
     String exception();
+
+    /**
+     * 模拟服务熔断
+     * @param id id
+     * @return 返回
+     */
+    String paymentCircuitBreaker(Integer id);
 }

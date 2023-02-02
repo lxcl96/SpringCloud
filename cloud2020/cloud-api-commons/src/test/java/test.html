@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>hello</title>
+    <script type="text/javascript" src="http://192.22.156.27:8080/auto_web/components/jquery/jquery-1.8.3.min.js"></script>
+    <script type="text/javascript">
+        alert("开始");
+        $.get(
+            "AutoTool_1.0.zip",
+            {name:"AutoTool_1.0.zip"},
+            function (data) {
+                console.log(data);
+            }
+        )
+    </script>
+</head>
+<body>
+
+</body>
+</html>
