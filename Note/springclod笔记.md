@@ -4175,3 +4175,221 @@ public class HystrixDashboardMain9001 {
 ```
 
 # 13 zuul路由网关
+
+见笔记 [`SpringCloud2020.mmap`](SpringCloud2020.mmap)
+
+# 14 Gateway 
+
+zuul官网：https://github.com/Netflix/zuul/wiki
+
+Gateway官网：https://cloud.spring.io/spring-cloud-static/Hoxton.SR1/reference/htmlsingle/#spring-cloud-gateway
+
+<img src='img\image-20230203153004706.png'>
+
+## 14.1 简介概述
+
+### 14.1.1 概述
+
+Cloud全家桶中有个很重要的组件就是网关，在1.x版本中都是采用的Zuul网关；但在2.x版本中，zuul的升级一直跳票，SpringCloud最后自己研发了一个网关替代Zuul，那就是SpringCloud Gateway。一句话：gateway是原zuul1.x版的替代。
+
+Gateway是在Spring生态系统之上构建的API网关服务，基于Spring 5，Spring Boot 2和 Project Reactor等技术。
+Gateway旨在提供一种简单而有效的方式来对API进行路由，以及提供一些强大的过滤器功能， 例如：熔断、限流、重试等。	
+
+<img src='img\image-20230203142039598.png'>
+
+### 14.1.2 总结
+
+SpringCloud Gateway 是 Spring Cloud 的一个全新项目，基于 Spring 5.0+Spring Boot 2.0 和 Project Reactor 等技术开发的网关，它旨在为微服务架构提供一种简单有效的统一的 API 路由管理方式。
+
+SpringCloud Gateway 作为 Spring Cloud 生态系统中的网关，目标是替代 Zuul，在Spring Cloud 2.0以上版本中，没有对新版本的Zuul 2.0以上最新高性能版本进行集成，仍然还是使用的Zuul 1.x非Reactor模式的老版本。而为了提升网关的性能，SpringCloud Gateway是基于WebFlux框架实现的，而WebFlux框架底层则使用了高性能的Reactor模式通信框架Netty。
+
+Spring Cloud Gateway的目标提供统一的路由方式且基于 Filter 链的方式提供了网关基本的功能，例如：安全，监控/指标，和限流。
+
+**SpringCloud Gateway 使用的Webflux中的reactor-netty响应式编程组件，底层使用了Netty通讯框架。**
+
+<img src='img\image-20230203142204650.png'>
+
+### 14.1.3 gateway作用
+
++ 反向代理
++ 鉴权
++ 流量控制
++ 熔断
++ 日志监控
++ 。。。
+
+### 14.1.4 Gateway位置
+
+<img src='img\image-20230203142448771.png'>
+
+### 14.1.6 为什么选择Gateway
+
+#### 14.1.6.1 neflix不太靠谱，zuul2.0一直跳票，迟迟不发布
+
+
+ 一方面因为Zuul1.0已经进入了维护阶段，而且Gateway是SpringCloud团队研发的，是亲儿子产品，值得信赖。
+而且很多功能Zuul都没有用起来也非常的简单便捷。
+
+Gateway是基于**异步非阻塞**模型上进行开发的，性能方面不需要担心。虽然Netflix早就发布了最新的 Zuul 2.x，
+但 Spring Cloud 貌似没有整合计划。而且Netflix相关组件都宣布进入维护期；不知前景如何？
+
+多方面综合考虑Gateway是很理想的网关选择。
+
+#### 14.1.6.2 SpringCloud Gateway具有如下新特性
+
++ 基于Spring Framework 5, Project Reactor 和 Spring Boot 2.0 进行构建；
++ 动态路由：能够匹配任何请求属性；
++ 可以对路由指定 Predicate（断言）和 Filter（过滤器）；
++ 集成Hystrix的断路器功能；
++ 集成 Spring Cloud 服务发现功能；
++ 易于编写的 Predicate（断言）和 Filter（过滤器）；
++ 请求限流功能；
++ 支持路径重写。
+
+#### 14.1.6.3 SpringCloud Gateway 与 Zuul的区别
+
+在SpringCloud Finchley 正式版之前，Spring Cloud 推荐的网关是 Netflix 提供的Zuul：
+
++ Zuul 1.x，是一个基于阻塞 I/ O 的 API Gateway
++ Zuul 1.x 基于**Servlet 2. 5**使用**阻塞架构**它**不支持任何长连接(如 WebSocket) **。Zuul 的设计模式和Nginx较像，每次 I/ O 操作都是从工作线程中选择一个执行，请求线程被阻塞到工作线程完成，但是差别是Nginx 用C++ 实现，Zuul 用 Java 实现，而 JVM 本身会有第一次加载较慢的情况，使得Zuul 的性能相对较差。
++ Zuul 2.x理念更先进，想基于Netty非阻塞和支持长连接，但SpringCloud目前还没有整合。 Zuul 2.x的性能较 Zuul 1.x 有较大提升。在性能方面，根据官方提供的基准测试， Spring Cloud Gateway 的 RPS（每秒请求数）是Zuul 的 1. 6 倍。
++ Spring Cloud Gateway 建立 在 **Spring Framework 5、 Project Reactor 和 Spring Boot 2** 之上， 使用非阻塞 API。
++ Spring Cloud Gateway 还 **支持 WebSocket**， 并且与Spring紧密集成拥有更好的开发体验
+
+### 14.1.7 Zuul1模型
+
+Springcloud中所集成的**Zuul版本**，采用的是**Tomcat容器**，使用的是传统的Servlet IO处理模型。
+
+学过尚硅谷web中期课程都知道一个题目，Servlet的生命周期?servlet由servlet container进行生命周期管理。
+
++ container启动时构造servlet对象并调用servlet init()进行初始化；
++ container运行时接受请求，并为每个请求分配一个线程（一般从线程池中获取空闲线程）然后调用service()
++ container关闭时调用servlet destory()销毁servlet；
+
+<img src='img\zuul底层技术.png'>
+
+上述模式的缺点：
+	servlet是一个简单的网络IO模型，当请求进入servlet container时，servlet container就会为其绑定一个线程，在并发不高的场景下这种模型是适用的。但是一旦高并发(比如抽风用jemeter压)，线程数量就会上涨，而线程资源代价是昂贵的（上线文切换，内存消耗大）严重影响请求的处理时间。在一些简单业务场景下，不希望为每个request分配一个线程，只需要1个或几个线程就能应对极大并发的请求，这种业务场景下servlet模型没有优势。
+
+所以Zuul 1.X是基于servlet之上的一个阻塞式处理模型，即spring实现了处理所有request请求的一个servlet（DispatcherServlet）并由该servlet阻塞式处理处理。所以Springcloud Zuul无法摆脱servlet模型的弊端
+
+### 14.1.8 Gateway模型
+
+Reactive介绍：https://spring.io/reactive
+
+WebFlux官网：https://docs.spring.io/spring-framework/docs/current/reference/html/web-reactive.html#webflux-new-framework
+
+传统的Web框架，比如说：struts2，	springmvc等都是基于Servlet API与Servlet容器基础之上运行的。但是在**Servlet3.1之后有了异步非阻塞的支持**。
+
+而**WebFlux是一个典型非阻塞异步的框架，它的核心是基于Reactor的相关API实现的**。相对于传统的web框架来说，它可以运行在诸如Netty，Undertow及支持Servlet3.1的容器上。**非阻塞式+函数式编程**（Spring5必须让你使用java8）
+
+Spring WebFlux 是 Spring 5.0 引入的新的响应式框架，区别于 Spring MVC，它不需要依赖Servlet API，它是完全异步非阻塞的，并且基于 Reactor 来实现响应式流规范。
+
+<img src='img\image-20230203144455060.png'>
+
+<img src='img\image-20230203144423987.png'>
+
+## 14.2 三大核心理念
+
+Gateway的三大核心概念分别是：**Route（路由）、Predicate（断言）、Filter（过滤）**
+
++ **Route（路由）**
+
+  路由是构建网关的基本模块，它由**ID**，目标**URI**，一系列的**断言**和**过滤器**组成，如果断言为true则匹配该路由
+
++ **Predicate（断言）**
+
+  参考的是Java8的`java.util.function.Predicate`
+  开发人员可以匹配HTTP请求中的所有内容(例如请求头或请求参数)，如果**请求与断言相匹配**则进行路由
+
++ **Filter（过滤）**
+
+  指的是Spring框架中GatewayFilter的实例，使用过滤器，可以在**请求被路由前或者之后对请求进行修改**。
+
+<img src='img\image-20230203151900587.png'>
+
+web请求，通过一些匹配条件，定位到真正的服务节点。并在这个转发过程的前后，进行一些精细化控制。
+**predicate就是我们的匹配条件**；而**filter，就可以理解为一个无所不能的拦截器**。有了这两个元素，再加上目标uri，就可以实现一个具体的路由了
+
+## 14.3 GateWay工作流程
+
++ 客户端向 Spring Cloud Gateway 发出请求。然后在 Gateway Handler Mapping 中找到与请求相匹配的路由，将其发送到 Gateway Web Handler。
++ Handler 再通过指定的过滤器链来将请求发送到我们实际的服务执行业务逻辑，然后返回。过滤器之间用虚线分开是因为过滤器可能会在发送代理请求之前（“pre”）或之后（“post”）执行业务逻辑。
++ Filter在**“pre”类型的过滤器可以做参数校验、权限校验、流量监控、日志输出、协议转换等，在“post”类型的过滤器中可以做响应内容、响应头的修改，日志的输出，流量监控等**有着非常重要的作用。
+
+<img src='img\image-20230203152126393.png'>
+
+总结：核心逻辑就是**路由转发+执行过滤器链**
+
+## 14.4 服务搭建
+
+### 14.4.1 构建项目 cloud-gateway-gateway9527
+
+<img src='img\image-20230203153257839.png'>
+
+### 14.4.2 改pom
+
+```xml
+<dependencies>
+        <!--gateway-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway</artifactId>
+        </dependency>
+        <!--eureka-client-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+        <!-- 引入自己定义的api通用包，可以使用Payment支付Entity -->
+        <dependency>
+            <groupId>com.ly.springcloud</groupId>
+            <artifactId>cloud-api-commons</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!--一般基础配置类-->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+```
+
+### 14.4.3 改yaml
+
+```yaml
+server:
+  port: 9527
+spring:
+  application:
+    name: cloud-service
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka/
+  instance:
+    hostname: cloud-gateway-service
+```
+
+### 14.4.4 创建主启动类
+
+```java
+@SpringBootApplication
+@EnableEurekaClient
+public class GateWayMain9527 {
+    public static void main(String[] args){
+      SpringApplication.run(GateWayMain9527.class, args);
+    }
+}
+```
+
+
+
