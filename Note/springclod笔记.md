@@ -3969,7 +3969,188 @@ public String str_fallbackMethod()
 
 ### 12.3.7 ==服务限流-解决方案*==
 
+参考后面的Sentinal
 
+## 12.4 Hystrix工作流程
+
+官网：[How it Works · Netflix/Hystrix Wiki · GitHub](https://github.com/Netflix/Hystrix/wiki/How-it-Works) 
+
+### 12.4.1 步骤流程
+
+1. 创建 **HystrixCommand**（用在依赖的服务**返回单个操作结果**的时候） 或 **HystrixObserableCommand**（用在依赖的服务**返回多个操作结果**的时候） 对象。
+
+2. 命令执行。其中 **HystrixComand** 实现了下面前两种执行方式；
+
+   > + `execute()`：同步执行，从依赖的服务返回一个单一的结果对象， 或是在发生错误的时候抛出异常。
+   > + `queue()`：异步执行， 直接返回 一个Future对象， 其中包含了服务执行结束时要返回的单一结果对象。
+
+   而 **HystrixObservableCommand** 实现了后两种执行方式：
+
+   > + `observe()`：返回 Observable 对象，它代表了操作的多个结果，它是一个 Hot Obserable（不论 "事件源" 是否有 "订阅者"，都会在创建后对事件进行发布，所以对于 Hot Observable 的每一个 "订阅者" 都有可能是从 "事件源" 的中途开始的，并可能只是看到了整个操作的局部过程）。
+   > + `toObservable()`： 同样会返回 Observable 对象，也代表了操作的多个结果，但它返回的是一个Cold Observable（没有 "订阅者" 的时候并不会发布事件，而是进行等待，直到有 "订阅者" 之后才发布事件，所以对于 Cold Observable 的订阅者，它可以保证从一开始看到整个操作的全部过程）。
+
+3. 若当前命令的请求**缓存功能**是被启用的， 并且该命令缓存命中， 那么缓存的结果会立即以 Observable 对象的形式 返回。
+
+4. **检查断路器**是否为打开状态。如果断路器是打开的，那么Hystrix不会执行命令，而是转接到 fallback 处理逻辑（第 8 步）；如果断路器是关闭的，检查是否有可用资源来执行命令（第 5 步）。
+
+5. **检查可用资源**。**线程池/请求队列/信号量**是否占满？如果命令依赖服务的专有线程池和请求队列，或者信号量（不使用线程池的时候）已经被占满， 那么 Hystrix 也不会执行命令， 而是转接到 fallback 处理逻辑（第8步）。
+
+6. Hystrix 会根据我们编写的方法（第一步选择的）来决定采取什么样的方式去请求依赖服务。
+
+   > + `HystrixCommand.run() `：返回一个单一的结果，或者抛出异常。
+   > + `HystrixObservableCommand.construct()`： 返回一个Observable 对象来发射多个结果，或通过 onError 发送错误通知。
+
+7. Hystrix会将 "成功"、"失败"、"拒绝"、"超时" 等信息报告给断路器， 而断路器会维护一组计数器来统计这些数据。断路器会使用这些统计数据来决定是否要将断路器打开，来对某个依赖服务的请求进行 "熔断/短路"。
+
+8. 当命令执行失败的时候， Hystrix 会进入 fallback 尝试回退处理， 我们通常也称该操作为 "服务降级"。而能够引起服务降级处理的情况有下面几种：
+
+   > + 第4步： 当前命令处于"熔断/短路"状态，断路器是打开的时候。
+   > + 第5步： 当前命令的线程池、 请求队列或 者信号量被占满的时候。
+   > + 第6步：HystrixObservableCommand.construct() 或 HystrixCommand.run() 抛出异常的时候。
+
+9. 当Hystrix命令执行成功之后， 它会将处理结果直接返回或是以Observable 的形式返回。
+
+**tips**：如果我们没有为命令实现降级逻辑或者在降级处理逻辑中抛出了异常， Hystrix 依然会返回一个 Observable 对象， 但是它不会发射任何结果数据， 而是通过 onError 方法通知命令立即中断请求，并通过onError()方法将引起命令失败的异常发送给调用者。
+
+### 12.4.2 流程图
+
+<img src='/img/hystrix-command-flow-chart.png'>
+
+## 12.5 HystrixDashBoard 服务监控
+
+### 12.5.1 概述
+
+​	除了隔离依赖服务的调用以外，Hystrix还提供了**准实时的调用监控**（Hystrix Dashboard），Hystrix会**持续地记录所有通过Hystrix发起的请求的执行信息**，并以统计报表和图形的形式展示给用户，包括每秒执行多少请求多少成功，多少失败等。Netflix通过hystrix-metrics-event-stream项目实现了对以上指标的监控。Spring Cloud也提供了Hystrix Dashboard的整合，对监控内容转化成可视化界面。
+
+### 12.5.2 构建项目
+
+#### 12.5.2.1 新建项目
+
+<img src='img\image-20230203095051750.png'>
+
+#### 12.5.2.2 修改pom文件
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-netflix-hystrix-dashboard</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+```
+
+#### 12.5.2.3 修改yaml配置文件
+
+```yaml
+spring:
+  application:
+    name: payment-hystrix-dashboard-service
+server:
+  port: 9001
+```
+
+#### 12.5.2.4 创建主启动类
+
+```java
+@EnableHystrixDashboard//开启hystrix dashboard
+@SpringBootApplication
+public class HystrixDashboardMain9001 {
+    public static void main(String[] args){
+      SpringApplication.run(HystrixDashboardMain9001.class, args);
+    }
+}
+```
+
+#### 12.5.2.5 注意项
+
+使用Hystrix进行监控请求处理，必须开启spring的actuator（包括服务端provider，消费端consumer，dashboard端）
+
+各个项目中需要引入`spring-boot-starter-actuator`依赖
+
+#### 12.5.2.6 启动项目
+
+<img src='img\image-20230203100607634.png'>
+
+### 12.5.3 服务监控演示
+
+#### 12.5.3.1 启动eureka7001
+
+#### 12.5.3.2 启动dashboard9001
+
+#### 12.5.3.3 启动payment8001
+
+#### 12.5.3.4 根据实际情况启动consumer（本次不启动）
+
+#### 12.5.3.5 监控指定服务（provider8001）
+
+<font color='red'>***注意hystrix基于actuator开放的endpoint网址是：`http://127.0.0.1:8001/actuator/hystrix.stream`***</font>
+
+打开Hystrix DashBoard监控网址`http://127.0.0.1:9001/hystrix`，输入要监控的项目。该项目**必须引入actuator，且使用了Hystrix断路器**
+
+> ***为什么暴露给dashboard服务的地址是：http://127.0.0.1:9001/hystrix.stream？***
+>
+> 这是hystrix断路器生成的，其中
+>
+> + **hystrix.stream** 监控单个服务的单台机器(实例)的监控数据 ，只能适用于单台服务器。(`@HystrixCommand`)
+> + **turbine.stream** 可监控单个或多个服务的所有机器(实例)的监控数据 ，适用于服务器集群(`@HystrixObservableCommand`)
+
+<img src='\img\image-20230203102441355.png'>
+
+<img src='\img\image-20230203110042914.png'>
+
+#### 12.5.3.6 监控出错
+
++ `Unable to connect to Command Metric Stream.`
+
+  > 这是由于provider8001项目中actuator默认不是开放向web端的（只开放info和health），需要在该项目的yaml配置文件中开启
+  >
+  > ```yaml
+  > management:
+  >   endpoints:
+  >     web:
+  >       exposure:
+  >         include: '*' # 或者hystrix.stream都可以，hystrix自己构建一个endpoint
+  > ```
+
++ `Unable to connect to Command Metric Stream.`第二种解决方法
+
+  > ```java
+  > /**
+  >  * 配置类中加入组件bean，修改映射地址不走actuator
+  >  *此配置是为了服务监控而配置，与服务容错本身无关，springcloud升级后的坑
+  >  *ServletRegistrationBean因为springboot的默认路径不是"/hystrix.stream"，
+  >  *只要在自己的项目里配置上下面的servlet就可以了
+  >  */
+  > @Bean
+  > public ServletRegistrationBean getServlet() {
+  >     HystrixMetricsStreamServlet streamServlet = new HystrixMetricsStreamServlet();
+  >     ServletRegistrationBean registrationBean = new ServletRegistrationBean(streamServlet);
+  >     registrationBean.setLoadOnStartup(1);
+  >     registrationBean.addUrlMappings("/hystrix.stream");
+  >     registrationBean.setName("HystrixMetricsStreamServlet");
+  >     return registrationBean;
+  > }
+  > ```
+
+#### 12.5.3.7 解释
+
+<img src='\img\image-20230203110346780.png'>
+
+<img src='img\image-20230203110548154.png'>
 
 # 13 ==OpenFeign、Ribbon和Hystrix超时时间配置规则*==
 
