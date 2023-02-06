@@ -4331,7 +4331,7 @@ web请求，通过一些匹配条件，定位到真正的服务节点。并在�
 
 ```xml
 <dependencies>
-        <!--gateway-->
+        <!--gateway不需要starter-web的依赖-->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway</artifactId>
@@ -4391,5 +4391,144 @@ public class GateWayMain9527 {
 }
 ```
 
+### 14.4.5 Gateway实现代理
 
+​	因为我们我们开启的服务是`cloud-provider-payment8001`，存在访问地址：`localhost:8001/payment/get/{id}`，但是我们不想向外部暴露实际服务的端口，那么就可以使用Gateway的代理功能：如使用Gateway的925端口，那么替换后的实际url就为：`localhost:9527/payment/get/{id}`
 
+***Gateway9527服务配置gateway***
+
+```yaml
+spring:
+  application:
+    name: cloud-service
+  cloud:
+    gateway:
+      routes:
+        - id: payment_route1
+          uri: http://localhost:8001 
+          predicates:
+            - Path=/payment/get/{id} # 或者/payment/get/**
+```
+
+### 14.4.6 测试
+
++ 启动eureka7001服务
+
++ 启动provider8001服务
+
++ 启动gateway9527服务
+
++ 测试
+
+  > +  访问原生8001地址
+  >
+  >   <img src='img\image-20230206095351044.png'>
+  >
+  > + 访问gateway代理后的9527地址
+  >
+  >   <img src='img\image-20230206095420160.png'>
+
+### 14.4.7 ==Gateway网关路由的两种配置方式*==
+
+#### 14.4.7.1 yaml文件配置
+
+```yaml
+spring:
+  application:
+    name: cloud-gateway-service
+  cloud:
+    gateway:
+      routes:
+        - id: payment_route1
+          uri: http://localhost:8001
+          predicates:
+            - Path=/payment/get/{id} # 或者/payment/get/**
+```
+
+#### 14.4.7.2 配置类方式
+
+```java
+@Configuration//Gateway9527端
+public class GatewayConfig {
+
+    /**
+     * 通过硬编码方式，给gateway注入路由，实现
+     *   本机访问：http://localhost:9527/guonei
+     *   则会自动跳转到http://news.baidu.com/guonei
+     * @param builder RouteLocatorBuilder
+     * @return RouteLocator
+     */
+    @Bean
+    public RouteLocator customRouteLocator(RouteLocatorBuilder builder){
+        RouteLocatorBuilder.Builder routes = builder.routes();//对应配置文件的spring.cloud.gateway.routes
+        routes.route("route_to_baidu",
+                predicateSpec ->
+                        predicateSpec
+                                .path("/guonei")//path就是配置文件中predicates中的Path
+                                .uri("http://news.baidu.com/"));//就是yml中的uri
+        return routes.build();
+    }
+}
+```
+
+## 14.5 通过微服务名实现动态路由
+
+原本的路由都是些写死服务器地址如：`http://localhost:8001`但是实际上，某种服务由很多微服务组成的集群，所以需要使用服务名实现动态的微服务匹配。
+
+### 14.5.1 Gateway端yml
+
+注意两点
+
++ `spring.cloud.gateway.discovery.locator.enabled`的状态
+
+  启用DiscoveryClient网关集成的标志
+
+  + `true`：开启后可以**指定服务名**访问
+
+    > 可以`http://127.0.0.1:9527/CLOUD-PAYMENT-SERVICE/payment/get/2`访问
+    >
+    > 也可以`http://127.0.0.1:9527/payment/get/2`访问
+
+  + `false`：
+
+    > 只能`http://127.0.0.1:9527/payment/get/2`访问
+
++ `spring.cloud.gateway.routes.uri`的地址必须是以`lb:// + 注册到微服务名`
+
+```yaml
+spring:
+  application:
+    name: cloud-gateway-service
+  cloud:
+    gateway:
+      discovery:
+        locator:
+        #spring.cloud.gateway.discovery.locator.enabled：是否与服务注册于发现组件进行结合，通过 serviceId 转发到具体的服务实例。默认为 false，设为 true 便开启通过服务中心的自动根据 serviceId 创建路由的功能。
+		#spring.cloud.gateway.discovery.locator.lowerCaseServiceId：是将请求路径上的服务名配置为小写（因为服务注册的时候，向注册中心注册时将服务名转成大写的了）。
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: payment_route1
+          # uri: http://localhost:8001
+          uri: lb://cloud-payment-service # lb://表示不是直接的地址，而是负载均衡的，需要去注册中心找
+          predicates:
+            - Path=/payment/get/{id} # 或者/payment/get/**
+```
+
+### 14.5.2 测试
+
++ 启动eureka7001
+
++ 启动provider8001
+
++ 启动provider8002，实现集群
+
++ 应该启动consumer端的，但是内存不够了
+
++ 启动gateway9527
+
++ 访问
+
+  <img src='img\image-20230206112655752.png'>
+
+  <img src='img\image-20230206112926227.png'>
