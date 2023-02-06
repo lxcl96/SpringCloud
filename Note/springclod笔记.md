@@ -4790,5 +4790,129 @@ spring:
 
 <img src='img\image-20230206154612951.png'>
 
-## 14.6 Filter过滤器
+## 14.7 Filter过滤器
 
+路由过滤器可用于修改进入的HTTP请求和返回的HTTP响应，路由过滤器只能指定路由进行使用。Spring Cloud Gateway 内置了多种路由过滤器，他们都由GatewayFilter的工厂类来产生。
+
+### 14.7.1 Gateway中Filter的生命周期
+
++ pre，进入路由器前
++ post，出去路由后
+
+### 14.7.2 Gateway中Filter的种类
+
++ GatewayFilter Factories 
+
+  网址：https://cloud.spring.io/spring-cloud-static/Hoxton.SR1/reference/htmlsingle/#gatewayfilter-factories
+
+  ```sh
+  # 官网一共31种单一过滤器
+  16. Spring Cloud Gateway
+  16.1. How to Include Spring Cloud Gateway
+  16.2. Glossary
+  16.3. How It Works
+  16.4. Route Predicate Factories
+  16.5. GatewayFilter Factories
+  16.5.1. The AddRequestHeader GatewayFilter Factory
+  16.5.2. The AddRequestParameter GatewayFilter Factory
+  16.5.3. The AddResponseHeader GatewayFilter Factory
+  16.5.4. The DedupeResponseHeader GatewayFilter Factory
+  16.5.5. The Hystrix GatewayFilter Factory
+  16.5.6. Spring Cloud CircuitBreaker GatewayFilter Factory
+  16.5.7. The FallbackHeaders GatewayFilter Factory
+  16.5.8. The MapRequestHeader GatewayFilter Factory
+  16.5.9. The PrefixPath GatewayFilter Factory
+  16.5.10. The PreserveHostHeader GatewayFilter Factory
+  16.5.11. The RequestRateLimiter GatewayFilter Factory
+  16.5.12. The RedirectTo GatewayFilter Factory
+  16.5.13. The RemoveHopByHopHeadersFilter GatewayFilter Factory
+  16.5.14. The RemoveRequestHeader GatewayFilter Factory
+  16.5.15. RemoveResponseHeader GatewayFilter Factory
+  16.5.16. The RemoveRequestParameter GatewayFilter Factory
+  16.5.17. The RewritePath GatewayFilter Factory
+  16.5.18. RewriteLocationResponseHeader GatewayFilter Factory
+  16.5.19. The RewriteResponseHeader GatewayFilter Factory
+  16.5.20. The SaveSession GatewayFilter Factory
+  16.5.21. The SecureHeaders GatewayFilter Factory
+  16.5.22. The SetPath GatewayFilter Factory
+  16.5.23. The SetRequestHeader GatewayFilter Factory
+  16.5.24. The SetResponseHeader GatewayFilter Factory
+  16.5.25. The SetStatus GatewayFilter Factory
+  16.5.26. The StripPrefix GatewayFilter Factory
+  16.5.27. The Retry GatewayFilter Factory
+  16.5.28. The RequestSize GatewayFilter Factory
+  16.5.29. Modify a Request Body GatewayFilter Factory
+  16.5.30. Modify a Response Body GatewayFilter Factory
+  16.5.31. Default Filters
+  ```
+
++ Global Filters
+
+  网址：https://cloud.spring.io/spring-cloud-static/Hoxton.SR1/reference/htmlsingle/#global-filters
+
+  ```sh
+  # 10种全局过滤器
+  16.6. Global Filters
+  16.6.1. Combined Global Filter and GatewayFilter Ordering
+  16.6.2. Forward Routing Filter
+  16.6.3. The LoadBalancerClient Filter
+  16.6.4. The ReactiveLoadBalancerClientFilter
+  16.6.5. The Netty Routing Filter
+  16.6.6. The Netty Write Response Filter
+  16.6.7. The RouteToRequestUrl Filter
+  16.6.8. The Websocket Routing Filter
+  16.6.9. The Gateway Metrics Filter
+  16.6.10. Marking An Exchange As Routed
+  ```
+
+### 14.7.3 ==自定义全局过滤器*==
+
+**自定义全局过滤器需要实现两个接口： GlobalFilter和Ordered**
+
+```java
+package com.ly.springcloud.filter;
+...
+@Slf4j
+@Component
+public class MyLogGateWayFilter implements GlobalFilter, Ordered {
+
+    /**
+     * 作用：鉴权，日志记录。。 （没写规则就是所有请求）
+     */
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        String uname = exchange.getRequest().getQueryParams().getFirst("uname");
+        if (uname == null) {
+            log.info("非法入侵，未识别到用户 (；′⌒`)");
+            //可以设置个返回头
+            ServerHttpResponse response = exchange.getResponse();
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+            return response.setComplete();
+        }
+        return chain.filter(exchange);//继续执行过滤器链，类似于doFilter
+    }
+
+    /**
+     * 过滤器顺序，值越小越优先
+     * @return 优先值
+     */
+    @Override
+    public int getOrder() {
+        return 0;
+    }
+}
+```
+
+***测试***
+
++ 失败
+
+​	<img src='\img\image-20230206165047466.png'>
+
++ 成功
+
+<img src='img\image-20230206165225857.png'>
+
+
+
+# 15 SpringCloud Config 分步式配置中心
