@@ -4471,7 +4471,7 @@ public class GatewayConfig {
 }
 ```
 
-## 14.5 通过微服务名实现动态路由
+## 14.5 通过微服务名实现动态路由*
 
 原本的路由都是些写死服务器地址如：`http://localhost:8001`但是实际上，某种服务由很多微服务组成的集群，所以需要使用服务名实现动态的微服务匹配。
 
@@ -4532,3 +4532,263 @@ spring:
   <img src='img\image-20230206112655752.png'>
 
   <img src='img\image-20230206112926227.png'>
+
+## 14.6 Predicate断言
+
+我们注意到在Gateway9527系统启动时看到了以下内容：**这表示Predicate支持这些类型的判断**
+
+> 地址：`https://cloud.spring.io/spring-cloud-static/Hoxton.SR1/reference/htmlsingle/#the-after-route-predicate-factory`
+>
+> Spring Cloud Gateway matches routes as part of the Spring WebFlux `HandlerMapping` infrastructure. Spring Cloud Gateway includes many built-in route predicate factories. All of these predicates match on different attributes of the HTTP request. You can combine multiple route predicate factories with logical `and` statements.
+
+==***其实就是Predicate组成的一组规则，为了请求过来可以找到对应的路由***==
+
+### <img src='img\image-20230206143248832.png'>14.6.1 所有的RoutePredicateFactory
+
+<img src='img\image-20230206143805577.png'>**RoutePrecidateFactory的所有实现类：**
+
+<img src='img\image-20230206144018542.png'>
+
+### 14.6.2 常用的RoutePredicateFactory
+
+<font color='red'>***注意所有配置的首字母必须大写，且单词正确***</font>
+
+#### 14.6.2.1 After 
+
+表示在某个时间后，满足此断言的路由才会生效
+
+```yaml
+spring:
+  application:
+    name: cloud-gateway-service
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true #这个
+          lower-case-service-id: true
+      routes:
+        - id: payment_route1
+          uri: lb://cloud-payment-service
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] # 在此时间后该路由才会生效,但是enable=true（地址中有服务名的）的访问方式依旧可用
+```
+
+其中After后的时间串获得：`ZonedDateTime.now()`
+
+#### 14.6.2.2 Before 
+
+表示在某个时间前，满足此断言的路由才会生效
+
+```yaml
+spring:
+  application:
+    name: cloud-gateway-service
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true #这个
+          lower-case-service-id: true
+      routes:
+        - id: payment_route1
+          uri: lb://cloud-payment-service
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] # 在此时间后该路由才会生效,但是enable=true（地址中有服务名的）的访问方式依旧可用
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai] # 同上enable
+```
+
+#### 14.6.2.3 Between 
+
+表示在某个时间段内，满足此断言的路由才会生效 **用逗号分开时间段**
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: payment_route1
+          uri: lb://cloud-payment-service
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] 
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Between=2023-02-06T14:13:31.798+08:00[Asia/Shanghai],2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+```
+
+#### 14.6.2.4 Cookie 
+
+表示发送的请求必须含有cookie信息，且满足条件：（满足此断言的路由才会生效）
+
++ key为`no.`
++ value为`正则表达式 \d+`
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] 
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Between=2023-02-06T14:13:31.798+08:00[Asia/Shanghai],2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Cookie=no.,\d+ # C大写
+```
+
+#### 14.6.2.5 Header 
+
+表示发送的请求必须含有请求头信息，且满足条件：（满足此断言的路由才会生效）
+
++ 请求头key为`X-Request-Id`
++ 请求头value为`正则表达式 \d+`
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] 
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Between=2023-02-06T14:13:31.798+08:00[Asia/Shanghai],2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Cookie=no.,\d+
+            - Header=X-Request-Id,\d+
+```
+
+#### 14.6.2.6 Host
+
+表示请求的主机必须满足设定的条件，满足此断言的路由才会生效
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] 
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Between=2023-02-06T14:13:31.798+08:00[Asia/Shanghai],2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Cookie=no.,\d+
+            - Header=X-Request-Id,\d+
+            - Host=**,**.baidu.com # 以.作为分隔符
+```
+
+#### 14.6.2.7 Method
+
+表示当前请求的方式必须是指定类型，满足此断言的路由才会生效
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] 
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Between=2023-02-06T14:13:31.798+08:00[Asia/Shanghai],2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Cookie=no.,\d+
+            - Header=X-Request-Id,\d+
+            - Host=**,**.baidu.com # 以.作为分隔符
+            - Method=GET,POST
+```
+
+#### 14.6.2.8 Path 
+
+表示请求的url必须匹配设定的值，满足此断言的路由才会生效
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] 
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Between=2023-02-06T14:13:31.798+08:00[Asia/Shanghai],2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Cookie=no.,\d+
+            - Header=X-Request-Id,\d+
+            - Host=**,**.baidu.com # 以.作为分隔符
+            - Method=GET,POST
+            - Path=/payment/get/{id} # 或者/payment/get/**
+```
+
+#### 14.6.2.9 Query 
+
+表示请求必须携带指定的参数（和值），满足此断言的路由才会生效
+
++ 可以只有参数
++ 属性值可以为正则表达式
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] 
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Between=2023-02-06T14:13:31.798+08:00[Asia/Shanghai],2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Cookie=no.,\d+
+            - Header=X-Request-Id,\d+
+            - Host=**,**.baidu.com # 以.作为分隔符
+            - Method=GET,POST
+            - Path=/payment/get/{id} # 或者/payment/get/**
+            - Query=seq #表示请求必须由seq参数，不管有没有值（-Query=seq,\d+）
+```
+
+#### 14.6.2.10 RemoteAddr
+
+表示请求（客户端）的remote addr时是指定值是可用，满足此断言的路由才会生效
+
+> REMOTE_ADDR：
+>
+> 表示发出请求的远程主机的 IP 地址，remote_addr代表客户端的IP，但它的值不是由客户端提供的，而是服务端根据客户端的ip指定的，当你的浏览器访问某个网站时，假设中间没有任何代理，那么网站的web[服务器](https://www.baidu.com/s?wd=服务器&tn=24004469_oem_dg&rsv_dl=gh_pl_sl_csd)（[Nginx](https://www.baidu.com/s?wd=Nginx&tn=24004469_oem_dg&rsv_dl=gh_pl_sl_csd)，Apache等）就会把remote_addr设为你的机器IP，如果你用了某个代理，那么你的浏览器会先访问这个代理，然后再由这个代理转发到网站，这样web服务器就会把remote_addr设为这台代理机器的IP
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+          predicates:
+            - After=2023-02-06T14:13:31.798+08:00[Asia/Shanghai] 
+            - Before=2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Between=2023-02-06T14:13:31.798+08:00[Asia/Shanghai],2023-05-06T14:13:31.798+08:00[Asia/Shanghai]
+            - Cookie=no.,\d+
+            - Header=X-Request-Id,\d+
+            - Host=**,**.baidu.com # 以.作为分隔符
+            - Method=GET,POST
+            - Path=/payment/get/{id} # 或者/payment/get/**
+            - Query=seq #表示请求必须由seq参数，不管有没有值（-Query=seq,\d+）
+            - RemoteAddr=127.0.0.1,192.168.1.1/24 # 后一个表示从1-24的地址段都可以
+```
+
+#### 14.6.2.11Weight
+
+表示对同一个路由下的多个请求路径进行分组，并且根据设置的权重进行分配流量。
+
+> This route would forward ~80% of traffic to [weighthigh.org](https://weighthigh.org/) and ~20% of traffic to [weighlow.org](https://weighlow.org/)
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: weight_high
+        uri: https://weighthigh.org
+        predicates:
+        - Weight=group1, 8
+      - id: weight_low
+        uri: https://weightlow.org
+        predicates:
+        - Weight=group1, 2
+```
+
+#### 14.6.2.12 测试
+
+使用工具curl方式指定格式的请求：
+
+`curl --cookie "no.=1" --header "X-Request-Id:1" http://127.0.0.1:9527/payment/get/2?seq`
+
+<img src='img\image-20230206154612951.png'>
+
+## 14.6 Filter过滤器
+
