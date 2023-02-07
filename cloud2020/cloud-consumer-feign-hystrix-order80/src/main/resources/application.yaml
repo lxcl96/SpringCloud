@@ -1,0 +1,37 @@
+server:
+  port: 80
+
+eureka:
+  client:
+    register-with-eureka: true
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka/
+    fetch-registry: true
+
+spring:
+  application:
+    name: payment-consumer-feign-hystrix-service
+#  cloud:
+#    loadbalancer:
+#      retry:
+#        enabled: false
+
+
+ribbon:
+  ConnectTimeout: 5000 # 连接超时时间(ms)
+  ReadTimeout: 5000 # 通信超时时间(ms)
+  OkToRetryOnAllOperations: false # 是否对所有操作重试 默认为false
+  MaxAutoRetriesNextServer: 0 # 同一服务不同实例的重试次数 默认为1
+  MaxAutoRetries: 0 # 同一实例的重试次数 默认为0
+
+feign:
+  hystrix:
+    enabled: true
+
+#设置feign客户端超时时间(OpenFeign默认支持ribbon)
+#ribbon:
+#  #指的是建立连接后从服务器读取到可用资源所用的时间
+#  ReadTimeout: 5000
+#  #指的是建立连接所用的时间，适用于网络状况正常的情况下,两端连接所用的时间
+#  ConnectTimeout: 5000
+

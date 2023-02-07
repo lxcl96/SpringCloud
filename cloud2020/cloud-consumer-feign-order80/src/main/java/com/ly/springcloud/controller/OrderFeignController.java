@@ -25,15 +25,18 @@ public class OrderFeignController {
     @GetMapping("/consumer/payment/create")
     public CommonResult create(Payment payment) {
         log.info("consumer 接收到一条新增payment消息 serial={}",payment.getSerial());
-        int ret = paymentFeignService.create(payment);
+        return paymentFeignService.create(payment);
 
-        return new CommonResult<>(200,"成功",ret);
     }
 
     @GetMapping("/consumer/payment/get/{id}")
-    public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id){
-        Payment payment = paymentFeignService.getPaymentById(id);
-
-        return new CommonResult<>(200,"成功",payment);
+    public CommonResult getPaymentById(@PathVariable("id") Long id){
+        return paymentFeignService.getPaymentById(id);
     }
+
+    @GetMapping("/consumer/payment/feign/timeout")
+    public String paymentFeignTimeout(){
+        return paymentFeignService.paymentFeignTimeout();
+    }
+
 }

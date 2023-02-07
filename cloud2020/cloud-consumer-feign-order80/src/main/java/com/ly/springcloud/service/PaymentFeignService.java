@@ -1,5 +1,6 @@
 package com.ly.springcloud.service;
 
+import com.ly.springcloud.entities.CommonResult;
 import com.ly.springcloud.entities.Payment;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.stereotype.Component;
@@ -18,17 +19,29 @@ public interface PaymentFeignService {
 
     /**
      * 对应provider端Service接口方法，OpenFeign可以识别Springmvc注解（相当于生产端的controller和service层合并）
+     *      返回值必须和service对应的controller的返回值完全一样，否则会导致数据无法封装为null
      * @param payment 参数对应的实体类
-     * @return 大于0表示成功
+     * @return  结果集
      */
     @GetMapping("/payment/create")
-    public int create(Payment payment);
+    CommonResult create(Payment payment);
 
     /**
      * 相当于provider生产端的controller和service层合并
+     *      返回值必须和service对应的controller的返回值完全一样，否则会导致数据无法封装为null
+     *      |比如provider的返回值是 CommonResult|
+     *      |我写 CommonResult<Payment> 错     |
+     *      |    Payment 错                   |
      * @param id 查询id
-     * @return 对应实体类
+     * @return 结果集
      */
     @GetMapping("/payment/get/{id}")
-    public Payment getPaymentById(@PathVariable("id") Long id);
+    CommonResult getPaymentById(@PathVariable("id") Long id);
+
+    /**
+     * 模拟业务端复杂耗时业务
+     * @return 结果
+     */
+    @GetMapping("/payment/feign/timeout")
+    String paymentFeignTimeout();
 }

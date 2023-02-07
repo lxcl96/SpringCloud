@@ -1,12 +1,24 @@
 server:
   port: 80
 
-#spring:
-#  application:
-#    name: cloud-order-service
+spring:
+  application:
+    name: cloud-order-service
 eureka:
   client:
-#    fetch-registry: true
+    fetch-registry: true
     service-url:
       defaultZone: http://eureka7001.com:7001/eureka/,http://eureka7002.com:7002/eureka/
-    register-with-eureka: false
+    register-with-eureka: true
+
+#设置feign客户端超时时间(OpenFeign默认支持ribbon)
+ribbon:
+  #指的是建立连接后从服务器读取到可用资源所用的时间
+  ReadTimeout: 5000
+  #指的是建立连接所用的时间，适用于网络状况正常的情况下,两端连接所用的时间
+  ConnectTimeout: 5000
+
+logging:
+  level: # debug 直接指定当前项目下所有类的日志等级
+    # 通过指定类名（最小单位，类 ），表名某一类的日志等级（springboot功能）
+    com.ly.springcloud.service.PaymentFeignService: debug
